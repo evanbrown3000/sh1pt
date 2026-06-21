@@ -2,7 +2,7 @@
   "name": "sh1pt",
   "version": "0.0.0",
   "private": true,
-  "description": "Ship one codebase to every platform, store, and registry.",
+  "description": "One codebase → every store, registry, CDN, and channel. AI agents tighten the loop.",
   "packageManager": "pnpm@9.12.0",
   "scripts": {
     "build": "pnpm --filter sh1pt-dot-com build",
@@ -28,5 +28,9 @@
     "tsx": "^4.19.1",
     "vitest": "^2.1.4",
     "@types/node": "^22.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/profullstack/sh1pt.git"
   }
 }
