@@ -85,7 +85,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           </div>
         </footer>
         <CrawlproofStats />
-      </body>
+      <script async src="https://feedback.profullstack.com/embed/profullstack-feedback.js" data-property="sh1pt.com"></script></body>
     </html>
   );
 }
