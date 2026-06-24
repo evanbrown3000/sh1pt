@@ -1377,6 +1377,24 @@ importers:
         specifier: workspace:*
         version: link:../../core
 
+  packages/scanners/threatcrush:
+    dependencies:
+      '@profullstack/sh1pt-core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/scanners/verification-layer:
+    dependencies:
+      '@profullstack/sh1pt-core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/scanners/vu1nz:
+    dependencies:
+      '@profullstack/sh1pt-core':
+        specifier: workspace:*
+        version: link:../../core
+
   packages/sdk: {}
 
   packages/secrets/doppler:
