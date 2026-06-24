@@ -50,7 +50,9 @@ See [`CLI_INTEGRATIONS.md`](./CLI_INTEGRATIONS.md) for the CLI-backed integratio
 
 ### Partners
 
-- [vu1nz.com](https://vu1nz.com) — security scanning partner for web and repo assessment workflows.
+- [vu1nz.com](https://vu1nz.com) — autonomous AI security scanner for web and repo assessment workflows.
+- [verification-layer](https://www.npmjs.com/package/verification-layer) — HIPAA compliance scanner for healthcare code.
+- [threatcrush.com](https://threatcrush.com) — all-in-one security agent: code scanning, secrets, and API pentesting.
 
 ### Ships to
 
@@ -825,6 +827,7 @@ sh1pt/
 │   ├── secrets/          Secret-provider CLI adapters (doppler, dotenvx, onepassword)
 │   ├── observability/    Release/telemetry CLI adapters (sentry)
 │   ├── security/         Security scanner CLI adapters (snyk)
+│   ├── scanners/         Security/compliance scanner adapters (vu1nz, verification-layer, threatcrush)
 │   ├── recipes/          App-type recipes (waitlist-crypto-investor, …)
 │   ├── merch/            Print-on-demand adapters (printful, printify)
 │   ├── captcha/          Captcha-solver adapters (2captcha, captcha-solver) — browser-mode fallback only
