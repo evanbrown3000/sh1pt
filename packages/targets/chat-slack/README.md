@@ -5,6 +5,7 @@
 }
 
 function renderSlackManifest(config: Config): string {
+  config = normalizedConfig(config);
   const appName = config.name ?? config.appId;
   const botDisplayName = config.botDisplayName ?? appName;
   const botScopes = config.scopes.bot ?? [];

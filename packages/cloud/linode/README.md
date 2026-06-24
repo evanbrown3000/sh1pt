@@ -1,12 +1,11 @@
 # Linode / Akamai Cloud (VPS, GPU, Dedicated CPU, Block Storage)
 
-Provides the Linode / Akamai Cloud cloud provider adapter for sh1pt scale and deploy workflows.
+Provides the Linode / Akamai Cloud (VPS, GPU, Dedicated CPU, Block Storage) cloud provider adapter for sh1pt scale and deploy workflows.
 
 ## What it does
 
 - Connects cloud provider credentials and project settings.
-- Quotes Linode instance types before provisioning.
-- Supports CPU VPS, GPU, dedicated CPU, and Block Storage workflows where implemented.
+- Supports infrastructure planning, deployment, or status workflows where implemented.
 - Includes a connection flow for account or credential setup.
 - Includes setup guidance for required credentials or provider configuration.
 
@@ -35,7 +34,7 @@ pnpm add @profullstack/sh1pt-cloud-linode
 pnpm --filter @profullstack/sh1pt-cloud-linode typecheck
 ```
 
-Run tests from the repository root:
+Run tests from the repository root when this module includes a test file:
 
 ```bash
 pnpm vitest run packages/cloud/linode/src/index.test.ts

@@ -1,6 +1,6 @@
-# NovitaAI
+# Novita AI
 
-Provides the NovitaAI AI provider adapter for sh1pt agent and model workflows.
+Provides the Novita AI AI provider adapter for sh1pt agent and model workflows.
 
 ## What it does
 
