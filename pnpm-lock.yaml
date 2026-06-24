@@ -2072,6 +2072,12 @@ importers:
         specifier: workspace:*
         version: link:../../core
 
+  packages/targets/registry-ans:
+    dependencies:
+      '@profullstack/sh1pt-core':
+        specifier: workspace:*
+        version: link:../../core
+
   packages/targets/sdk-pypi:
     dependencies:
       '@profullstack/sh1pt-core':
