@@ -1,6 +1,37 @@
 import { contractTestCloud } from '@profullstack/sh1pt-core/testing';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import adapter from './index.js';
+
+// Default fetch stub so the shared cloud contract suite (e.g. quote()) stays
+// deterministic and never makes a live network call in CI. Individual tests
+// below override this with vi.stubGlobal as needed.
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string | URL) => {
+    const target = String(url);
+    if (target.endsWith('/plans')) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({
+          plans: [
+            {
+              id: 'vc2-2c-4gb',
+              type: 'vc2',
+              vcpu_count: 2,
+              ram: 4096,
+              disk: 80,
+              monthly_cost: 20,
+              hourly_cost: 0.03,
+              locations: ['ewr'],
+            },
+          ],
+          meta: { total: 1, links: { next: '', prev: '' } },
+        }),
+      };
+    }
+    return { ok: true, status: 200, text: async () => '{}' };
+  }));
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
