@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import kleur from 'kleur';
 import prompts from 'prompts';
+import type { SecretProvider } from '@profullstack/sh1pt-core';
 import {
   deleteSecretFromCloud,
   getSecretFromCloud,
@@ -206,7 +207,7 @@ secretsCmd
   .option('--include <patterns...>', 'key patterns to include')
   .action(async (opts: EnvUpdateOpts) => {
     const { ensureInstalled, loadInstalledPackage } = await import('../installer.js');
-    const { registerSecretProvider, type SecretProvider } = await import('@profullstack/sh1pt-core');
+    const { registerSecretProvider } = await import('@profullstack/sh1pt-core');
 
     // Collect all provider slugs we need
     const fromSlug = opts.from ?? 'dotenvx';
@@ -331,7 +332,7 @@ secretsCmd
     }
 
     const { ensureInstalled, loadInstalledPackage } = await import('../installer.js');
-    const { registerSecretProvider, type SecretProvider } = await import('@profullstack/sh1pt-core');
+    const { registerSecretProvider } = await import('@profullstack/sh1pt-core');
 
     const sourceSlug = opts.source ?? 'dotenvx';
     const targetSlug = opts.target;
