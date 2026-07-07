@@ -2,7 +2,7 @@
 
 Installs the lightweight test workflow used by the sh1pt repository.
 
-The workflow runs on pull requests and pushes to the configured branch, installs with pnpm, and runs the configured test command with `CI=true`.
+The workflow runs on pull requests and pushes to the configured branch, installs with pnpm, and runs the configured test command with `CI=true`. The test step defaults to `pnpm run --if-present test`, so a repository that has not defined a test script yet gets a green workflow instead of failing on the first step.
 
 ## Requirements
 

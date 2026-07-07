@@ -2,7 +2,7 @@ schemaVersion: 1
 id: node-pnpm-ci
 name: Node pnpm CI
 description: Least-privilege Node/TypeScript CI workflow using pnpm — install, typecheck, test.
-version: 1.1.0
+version: 1.2.0
 publisher: profullstack
 visibility: public
 license: MIT
@@ -35,12 +35,12 @@ inputs:
     description: Command to install dependencies.
   typecheckCommand:
     type: string
-    default: pnpm typecheck
-    description: Command to run typecheck.
+    default: pnpm run --if-present typecheck
+    description: Command to run typecheck. Uses --if-present so repos without a typecheck script pass instead of hard-failing.
   testCommand:
     type: string
-    default: pnpm test
-    description: Command to run tests.
+    default: pnpm run --if-present test
+    description: Command to run tests. Uses --if-present so repos without a test script pass instead of hard-failing.
 secrets: []
 repoVariables: []
 files:

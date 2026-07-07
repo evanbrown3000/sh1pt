@@ -31,6 +31,9 @@ jobs:
 
       - run: {{installCommand}}
 
+      # typecheck / test default to `pnpm run --if-present <script>` so a repo
+      # that hasn't defined these scripts yet gets a green workflow instead of
+      # failing on the first step. Once the scripts exist they run normally.
       - run: {{typecheckCommand}}
 
       - run: {{testCommand}}

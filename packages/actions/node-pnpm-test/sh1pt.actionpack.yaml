@@ -2,7 +2,7 @@ schemaVersion: 1
 id: node-pnpm-test
 name: Node pnpm Test
 description: Node/pnpm test workflow based on sh1pt's own repository test workflow.
-version: 1.1.0
+version: 1.2.0
 publisher: profullstack
 visibility: public
 license: MIT
@@ -36,8 +36,8 @@ inputs:
     description: Command to install dependencies.
   testCommand:
     type: string
-    default: pnpm test
-    description: Command to run tests.
+    default: pnpm run --if-present test
+    description: Command to run tests. Uses --if-present so repos without a test script pass instead of hard-failing.
 secrets: []
 repoVariables: []
 files:

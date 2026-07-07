@@ -86,6 +86,10 @@ describe('built-in packs', () => {
     // pnpm version comes from package.json's packageManager field, not a pinned input.
     expect(file?.content).not.toContain('version: 9');
     expect(file?.content).toContain('pnpm install --frozen-lockfile');
+    // typecheck/test default to --if-present so repos lacking those scripts
+    // get a green workflow instead of failing on the first step.
+    expect(file?.content).toContain('pnpm run --if-present typecheck');
+    expect(file?.content).toContain('pnpm run --if-present test');
     expect(file?.content).toContain('${{ github.workflow }}');
     expect(file?.content).toContain('# Managed by sh1pt Actions Fleet');
   });
@@ -120,7 +124,7 @@ describe('built-in packs', () => {
     expect(file?.content).toContain('pnpm/action-setup@v4');
     // pnpm version comes from package.json's packageManager field, not a pinned input.
     expect(file?.content).not.toContain('version: 9.12.0');
-    expect(file?.content).toContain('pnpm test');
+    expect(file?.content).toContain('pnpm run --if-present test');
     expect(file?.content).toContain('# Managed by sh1pt Actions Fleet');
   });
 

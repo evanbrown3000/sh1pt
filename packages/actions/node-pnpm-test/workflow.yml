@@ -27,6 +27,9 @@ jobs:
 
       - run: {{installCommand}}
 
+      # test defaults to `pnpm run --if-present test` so a repo that hasn't
+      # defined a test script yet gets a green workflow instead of failing on
+      # the first step. Once the script exists it runs normally.
       - run: {{testCommand}}
         env:
           CI: true
