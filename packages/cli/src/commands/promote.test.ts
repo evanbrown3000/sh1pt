@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { parseNonNegativeInteger, parsePositiveInteger, stopCampaigns } from './promote.js';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import {
+  aggregateCampaignStatus,
+  loadCampaignSnapshots,
+  parseNonNegativeInteger,
+  parsePositiveInteger,
+  stopCampaigns,
+} from './promote.js';
 
 describe('promote numeric option parsers', () => {
   it('accepts decimal positive integers', () => {
@@ -24,6 +33,52 @@ describe('promote numeric option parsers', () => {
       expect(() => parseNonNegativeInteger(value)).toThrow('zero or a positive integer');
     },
   );
+});
+
+describe('promote campaign status', () => {
+  it('aggregates metrics and state counts by platform', () => {
+    const report = aggregateCampaignStatus([
+      { id: 'a', platform: 'reddit', state: 'active', spend: 12.5, impressions: 100, clicks: 8, installs: 2, conversions: 1 },
+      { id: 'b', platform: 'reddit', state: 'paused', spend: 2.5, impressions: 20, clicks: 2, installs: 0, conversions: 0 },
+      { id: 'c', platform: 'meta', state: 'pending', spend: 0, impressions: 0, clicks: 0, installs: 0, conversions: 0 },
+    ]);
+
+    expect(report.platforms).toEqual([
+      {
+        platform: 'meta', campaigns: 1, spend: 0, impressions: 0, clicks: 0, installs: 0, conversions: 0,
+        states: { pending: 1, active: 0, paused: 0, ended: 0, failed: 0, rejected: 0 },
+      },
+      {
+        platform: 'reddit', campaigns: 2, spend: 15, impressions: 120, clicks: 10, installs: 2, conversions: 1,
+        states: { pending: 0, active: 1, paused: 1, ended: 0, failed: 0, rejected: 0 },
+      },
+    ]);
+    expect(report.totals).toEqual({ campaigns: 3, spend: 15, impressions: 120, clicks: 10, installs: 2, conversions: 1 });
+  });
+
+  it('filters the aggregate without mutating the snapshot', () => {
+    const campaigns = [
+      { id: 'a', platform: 'reddit', state: 'active' as const, spend: 1, impressions: 2, clicks: 3, installs: 4, conversions: 5 },
+      { id: 'b', platform: 'meta', state: 'ended' as const, spend: 6, impressions: 7, clicks: 8, installs: 9, conversions: 10 },
+    ];
+    expect(aggregateCampaignStatus(campaigns, 'meta').totals).toEqual({ campaigns: 1, spend: 6, impressions: 7, clicks: 8, installs: 9, conversions: 10 });
+    expect(campaigns).toHaveLength(2);
+  });
+
+  it('returns an empty list for a missing snapshot', () => {
+    expect(loadCampaignSnapshots('missing-campaigns.json')).toEqual([]);
+  });
+
+  it('returns an empty list for malformed JSON', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'sh1pt-promote-status-'));
+    const filePath = join(directory, 'campaigns.json');
+    writeFileSync(filePath, '{ not valid json');
+    try {
+      expect(loadCampaignSnapshots(filePath)).toEqual([]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('promote stop selection', () => {

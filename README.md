@@ -425,10 +425,12 @@ sh1pt ship target add|remove|list|available
 sh1pt promote [--platform X] [--budget N] [--duration 7d] [--objective install] [--dry-run]
 
 sh1pt promote setup [--platform id] [--poll]   # org + ad account + funding + OAuth
-sh1pt promote status [--platform id] [--json]  # aggregated spend / impressions / installs
+sh1pt promote status [--platform id] [--json] [--file path]  # aggregated spend / impressions / installs
 sh1pt promote stop [--platform id] [--id campaignId] [--file path] [--dry-run]
 sh1pt promote creatives
 ```
+
+`promote status` is read-only and aggregates the local `.sh1pt/campaigns.json` snapshot. Use `--file <path>` to inspect a different snapshot; it never launches or changes a campaign.
 
 Publishing alone is table stakes. `promote` closes the loop — one command runs install / traffic / awareness campaigns on Reddit, Meta, TikTok, Google, YouTube, X, Apple Search, LinkedIn, and Microsoft Ads at once.
 
