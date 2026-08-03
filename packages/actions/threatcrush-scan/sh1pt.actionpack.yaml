@@ -63,7 +63,7 @@ files:
   # the native path whenever it is available — but shipping it means a repo is
   # scanned today rather than waiting on a release.
   - source: threatcrush-to-sarif.py
-    destination: .github/threatcrush-to-sarif.py
+    destination: .github/scripts/threatcrush-to-sarif.py
     mergeStrategy: replace-managed
 policies:
   installMode: pull-request

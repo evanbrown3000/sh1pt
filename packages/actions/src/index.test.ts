@@ -41,7 +41,7 @@ describe('built-in packs', () => {
     // Workflow plus the legacy-output converter it falls back to.
     expect(entry?.manifest.files.map((f) => f.destination)).toEqual([
       '.github/workflows/threatcrush-scan.yml',
-      '.github/threatcrush-to-sarif.py',
+      '.github/scripts/threatcrush-to-sarif.py',
     ]);
   });
 
@@ -215,7 +215,7 @@ describe('built-in packs', () => {
     expect(content).toContain('if [ ! -s threatcrush.sarif ]; then');
     // A CLI without --format takes the converter path rather than failing the
     // repo out of being scanned at all.
-    expect(content).toContain('.github/threatcrush-to-sarif.py');
+    expect(content).toContain('.github/scripts/threatcrush-to-sarif.py');
     expect(content).toContain('this diff was NOT scanned');
     // And the report must be fail-closed. Testing for status == "error" was
     // fail-open: when the capability check fails the scan step is *skipped*,
@@ -236,7 +236,16 @@ describe('built-in packs', () => {
       manifest: entry.manifest,
       inputs: {},
     });
-    expect(result.files[0]?.content).not.toContain('pull_request_target');
+    // Comments are stripped first: the workflow documents why it stays on
+    // `pull_request`, and a raw substring check would forbid explaining the
+    // very decision it exists to protect. What matters is that no directive
+    // selects the event.
+    const directives = (result.files[0]?.content ?? '')
+      .split('\n')
+      .filter((line) => !/^\s*#/.test(line))
+      .join('\n');
+    expect(directives).not.toContain('pull_request_target');
+    expect(directives).toMatch(/^on:\n\s+pull_request:\s*$/m);
     expect(entry.manifest.security.allowPullRequestTarget).toBe(false);
   });
 });

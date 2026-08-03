@@ -91,7 +91,7 @@ jobs:
               # every finding reads as out-of-scope.
               PREFIX="$SCAN_PATH"
             fi
-            python3 .github/threatcrush-to-sarif.py \
+            python3 .github/scripts/threatcrush-to-sarif.py \
               --input threatcrush-output.txt \
               --output threatcrush.sarif \
               --path-prefix "$PREFIX" \

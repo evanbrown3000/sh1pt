@@ -34,7 +34,7 @@ scanning, and picks accordingly:
 | CLI | Path |
 | --- | --- |
 | Has `--format` | Native SARIF. Preferred; nothing is parsed. |
-| Older | Runs the text scan and converts it with `.github/threatcrush-to-sarif.py`. |
+| Older | Runs the text scan and converts it with `.github/scripts/threatcrush-to-sarif.py`. |
 
 The check happens up front because exit codes cannot tell the two failures
 apart. The published `0.2.2` has no `--format`: the scan died with
