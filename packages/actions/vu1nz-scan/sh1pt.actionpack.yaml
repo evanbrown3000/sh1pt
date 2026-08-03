@@ -2,7 +2,7 @@ schemaVersion: 1
 id: vu1nz-scan
 name: vu1nz Security Scan
 description: AI-powered pull request vulnerability scanning with vu1nz.
-version: 1.0.1
+version: 1.0.2
 publisher: profullstack
 visibility: public
 license: MIT
