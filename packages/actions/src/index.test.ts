@@ -209,6 +209,11 @@ describe('built-in packs', () => {
     expect(content).toContain("grep -q -- '--format'");
     expect(content).toContain('if [ ! -s threatcrush.sarif ]; then');
     expect(content).toContain('this diff was NOT scanned');
+    // And the report must be fail-closed. Testing for status == "error" was
+    // fail-open: when the capability check fails the scan step is *skipped*,
+    // so status is the empty string, and the comment reported "0 findings"
+    // for a scan that never started.
+    expect(content).toContain('if status not in ("clean", "findings")');
   });
 
   it('never uses pull_request_target', async () => {
