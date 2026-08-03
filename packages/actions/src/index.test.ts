@@ -28,6 +28,18 @@ describe('built-in packs', () => {
     expect(entry?.manifest.secrets[0]?.name).toBe('ENV_FILE');
   });
 
+  it('loads the threatcrush-scan pack', async () => {
+    const catalog = await loadBuiltinPacks();
+    const entry = catalog.get('threatcrush-scan');
+    expect(entry).toBeDefined();
+    expect(entry?.manifest.name).toBe('ThreatCrush Security Scan');
+    expect(entry?.manifest.files[0]?.destination).toBe('.github/workflows/threatcrush-scan.yml');
+    // No secrets: the scanner is entirely local to the runner. A pack that
+    // needs no credentials is a pack that can be installed fleet-wide without
+    // provisioning anything first.
+    expect(entry?.manifest.secrets).toHaveLength(0);
+  });
+
   it('loads the coinpay-invoice pack', async () => {
     const catalog = await loadBuiltinPacks();
     const entry = catalog.get('coinpay-invoice');
@@ -144,5 +156,51 @@ describe('built-in packs', () => {
     expect(file?.content).toContain('${{ secrets.ENV_FILE }}');
     expect(file?.content).toContain('${{ github.repository }}');
     expect(file?.content).toContain('# Managed by sh1pt Actions Fleet');
+  });
+
+  it('renders threatcrush-scan report-only by default', async () => {
+    const catalog = await loadBuiltinPacks();
+    const entry = catalog.get('threatcrush-scan');
+    if (!entry) throw new Error('threatcrush-scan not in catalog');
+    const result = await renderPack({
+      packDir: entry.packDir,
+      manifest: entry.manifest,
+      inputs: {},
+    });
+    const file = result.files[0];
+    expect(file?.destination).toBe('.github/workflows/threatcrush-scan.yml');
+    expect(file?.content).toContain('node-version: "20"');
+    expect(file?.content).toContain('--format sarif --output threatcrush.sarif');
+    // Empty by default, so a first install reports rather than blocks.
+    expect(file?.content).toContain('FAIL_ON=""');
+    expect(file?.content).toContain('# Managed by sh1pt Actions Fleet');
+  });
+
+  it('renders threatcrush-scan with a failure gate when asked', async () => {
+    const catalog = await loadBuiltinPacks();
+    const entry = catalog.get('threatcrush-scan');
+    if (!entry) throw new Error('threatcrush-scan not in catalog');
+    const result = await renderPack({
+      packDir: entry.packDir,
+      manifest: entry.manifest,
+      inputs: { failOn: 'critical,high' },
+    });
+    expect(result.files[0]?.content).toContain('FAIL_ON="critical,high"');
+  });
+
+  it('never uses pull_request_target', async () => {
+    // That event runs with repository secrets in scope; combined with a
+    // checkout of the PR head it executes untrusted contributor code with
+    // access to them. Asserted rather than documented so it cannot regress.
+    const catalog = await loadBuiltinPacks();
+    const entry = catalog.get('threatcrush-scan');
+    if (!entry) throw new Error('threatcrush-scan not in catalog');
+    const result = await renderPack({
+      packDir: entry.packDir,
+      manifest: entry.manifest,
+      inputs: {},
+    });
+    expect(result.files[0]?.content).not.toContain('pull_request_target');
+    expect(entry.manifest.security.allowPullRequestTarget).toBe(false);
   });
 });
