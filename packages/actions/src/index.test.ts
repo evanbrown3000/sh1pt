@@ -38,6 +38,11 @@ describe('built-in packs', () => {
     // needs no credentials is a pack that can be installed fleet-wide without
     // provisioning anything first.
     expect(entry?.manifest.secrets).toHaveLength(0);
+    // Workflow plus the legacy-output converter it falls back to.
+    expect(entry?.manifest.files.map((f) => f.destination)).toEqual([
+      '.github/workflows/threatcrush-scan.yml',
+      '.github/threatcrush-to-sarif.py',
+    ]);
   });
 
   it('loads the coinpay-invoice pack', async () => {
@@ -208,6 +213,9 @@ describe('built-in packs', () => {
     const content = result.files[0]?.content ?? '';
     expect(content).toContain("grep -q -- '--format'");
     expect(content).toContain('if [ ! -s threatcrush.sarif ]; then');
+    // A CLI without --format takes the converter path rather than failing the
+    // repo out of being scanned at all.
+    expect(content).toContain('.github/threatcrush-to-sarif.py');
     expect(content).toContain('this diff was NOT scanned');
     // And the report must be fail-closed. Testing for status == "error" was
     // fail-open: when the capability check fails the scan step is *skipped*,

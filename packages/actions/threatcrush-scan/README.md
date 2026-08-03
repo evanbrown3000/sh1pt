@@ -26,21 +26,40 @@ fires on everything gets switched off within a day, and a gate that is off is
 worse than one that was never installed. Tighten it to `critical,high` once the
 backlog is triaged.
 
-## Requires a CLI with native SARIF
+## Two output paths, chosen up front
 
-The workflow checks `threatcrush scan --help` for `--format` before scanning,
-and fails the job if it is absent.
+The workflow checks `threatcrush scan --help` for `--format` **before**
+scanning, and picks accordingly:
 
-This is not defensiveness for its own sake. The published `0.2.2` has no
-`--format`: the scan died with `error: unknown option '--format'`, commander
-exited `1` — the same code the CLI uses for *findings at or above `failOn`* —
-and the step read a failure as a result. No SARIF was written, the empty-run
-fallback supplied one, and the PR comment said **0 findings**. A green check on
-a repository that was never scanned.
+| CLI | Path |
+| --- | --- |
+| Has `--format` | Native SARIF. Preferred; nothing is parsed. |
+| Older | Runs the text scan and converts it with `.github/threatcrush-to-sarif.py`. |
 
-Exit codes cannot separate "argument rejected" from "findings found", so the
-pack does not try. It verifies the interface up front, and treats the SARIF
-file as the only evidence that a scan actually happened.
+The check happens up front because exit codes cannot tell the two failures
+apart. The published `0.2.2` has no `--format`: the scan died with
+`error: unknown option '--format'` and commander exited `1` — *the same code
+the CLI uses for findings at or above `failOn`*. Read as a result, that
+produced no SARIF, the empty-run fallback supplied one, and the PR comment
+said **0 findings**. A green check on a repository that was never scanned.
+
+The converter **fails closed**: if it cannot recognise the output it exits
+non-zero and writes nothing, dumping what it saw. Emitting empty SARIF instead
+would report "0 findings", which is indistinguishable from a clean scan.
+
+Three details of the legacy format are load-bearing, and the converter is
+tested against real captured output rather than assumption:
+
+- Severity is bare for `CRITICAL`, bracketed for `[HIGH]`/`[MEDIUM]`/`[LOW]`.
+  One regex shape misses half the findings.
+- `File:` paths are relative to the scan root, not the repository root.
+  Unprefixed, every finding resolves to nothing in the consumer's view.
+- Whole-file findings report line `:0`; SARIF requires `startLine >= 1`.
+
+**The legacy path is a stopgap, not a destination.** `0.2.2` is a secrets
+scanner: it scores 12.9% against the testbed. Once a CLI with `--format` is
+published the workflow switches to it automatically and coverage goes to
+90.32%.
 
 ## Exit codes are distinguished
 
