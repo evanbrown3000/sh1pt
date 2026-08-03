@@ -188,6 +188,29 @@ describe('built-in packs', () => {
     expect(result.files[0]?.content).toContain('FAIL_ON="critical,high"');
   });
 
+  it('refuses to run against a CLI that cannot emit SARIF', async () => {
+    // Regression: moshcoder/moshpit-name run 30803607991 installed the
+    // published 0.2.2, which has no --format. The scan died with
+    // `unknown option '--format'` and commander exited 1 — the same code the
+    // CLI uses for "findings at or above --fail-on" — so the step read a
+    // failure as a result and the PR comment said "0 findings". Green check,
+    // nothing scanned. Exit codes cannot separate those two cases, so the
+    // interface is checked up front and the SARIF file is treated as the only
+    // evidence a scan happened.
+    const catalog = await loadBuiltinPacks();
+    const entry = catalog.get('threatcrush-scan');
+    if (!entry) throw new Error('threatcrush-scan not in catalog');
+    const result = await renderPack({
+      packDir: entry.packDir,
+      manifest: entry.manifest,
+      inputs: {},
+    });
+    const content = result.files[0]?.content ?? '';
+    expect(content).toContain("grep -q -- '--format'");
+    expect(content).toContain('if [ ! -s threatcrush.sarif ]; then');
+    expect(content).toContain('this diff was NOT scanned');
+  });
+
   it('never uses pull_request_target', async () => {
     // That event runs with repository secrets in scope; combined with a
     // checkout of the PR head it executes untrusted contributor code with

@@ -26,6 +26,22 @@ fires on everything gets switched off within a day, and a gate that is off is
 worse than one that was never installed. Tighten it to `critical,high` once the
 backlog is triaged.
 
+## Requires a CLI with native SARIF
+
+The workflow checks `threatcrush scan --help` for `--format` before scanning,
+and fails the job if it is absent.
+
+This is not defensiveness for its own sake. The published `0.2.2` has no
+`--format`: the scan died with `error: unknown option '--format'`, commander
+exited `1` — the same code the CLI uses for *findings at or above `failOn`* —
+and the step read a failure as a result. No SARIF was written, the empty-run
+fallback supplied one, and the PR comment said **0 findings**. A green check on
+a repository that was never scanned.
+
+Exit codes cannot separate "argument rejected" from "findings found", so the
+pack does not try. It verifies the interface up front, and treats the SARIF
+file as the only evidence that a scan actually happened.
+
 ## Exit codes are distinguished
 
 The scan step separates the two ways a scan can end without being clean:
@@ -35,6 +51,9 @@ The scan step separates the two ways a scan can end without being clean:
 - **`2`** — the scan itself failed. **Not** a result. The job fails and the
   comment says `NOT RUN`, because an unexamined diff is not a clean one and
   the two are indistinguishable to whoever reads the comment.
+
+A missing or empty `threatcrush.sarif` is treated as `2` regardless of what the
+process returned.
 
 The same reasoning drives the *Ensure SARIF exists* step. It writes a valid
 empty run only so the upload does not fail on a missing file and bury the real
