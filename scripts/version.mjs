@@ -1,6 +1,13 @@
 #!/usr/bin/env node
-// Lockstep-bump the three published sh1pt packages:
-//   @profullstack/sh1pt-core, sh1pt-policy, sh1pt (the cli)
+// Lockstep-bump every published sh1pt package:
+//   @profullstack/sh1pt-core, sh1pt-openapi, sh1pt-actions-fleet-core,
+//   sh1pt-action-packs, sh1pt-secrets-env-updater, sh1pt-policy,
+//   sh1pt (the cli)
+//
+// The cli depends on all of the others, and pnpm rewrites `workspace:` to a
+// real range at publish time. Anything the cli depends on therefore has to be
+// published too, at a version that exists — so this list and the publish steps
+// in .github/workflows/release.yml have to stay in step with each other.
 //
 // Usage:
 //   node scripts/version.mjs patch   (0.1.1 → 0.1.2)
@@ -17,7 +24,16 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(fileURLToPath(import.meta.url), '..', '..');
-const PACKAGES = ['packages/core', 'packages/policy', 'packages/cli'];
+// Dependency order: dependencies before the packages that consume them.
+const PACKAGES = [
+  'packages/core',
+  'packages/openapi',
+  'packages/actions-fleet-core',
+  'packages/actions',
+  'packages/secrets/env-updater',
+  'packages/policy',
+  'packages/cli',
+];
 const arg = process.argv[2] ?? 'patch';
 
 function cmp(a, b) {
