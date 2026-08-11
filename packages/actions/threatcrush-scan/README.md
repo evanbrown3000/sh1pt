@@ -14,7 +14,7 @@ sh1pt actions install threatcrush-scan --repo owner/name --pr
 | --- | --- | --- |
 | `scanPath` | `.` | Path to scan, relative to the repository root. |
 | `nodeVersion` | `20` | See *Node 20, deliberately*, below. |
-| `threatcrushPackageSpec` | `@profullstack/threatcrush@latest` | npm spec used to install the CLI. |
+| `threatcrushPackageSpec` | `@profullstack/threatcrush@0.11.0` | npm spec used to install the CLI. Pinned rather than `@latest` so one bad publish cannot break every consumer at once; bump it in a pack release. |
 | `failOn` | *(empty)* | Comma-separated severities that fail the job, e.g. `critical,high`. Empty is report-only. |
 | `uploadSarif` | `true` | Upload to the Security tab. |
 

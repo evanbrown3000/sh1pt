@@ -5,7 +5,7 @@ description: >-
   Scans pull requests for hardcoded credentials, injection, SSRF, unsafe
   deserialisation and dependency tampering, and uploads SARIF to the Security
   tab.
-version: 1.1.0
+version: 1.2.0
 publisher: profullstack
 visibility: public
 license: MIT
@@ -32,8 +32,14 @@ inputs:
       that fails without a full toolchain.
   threatcrushPackageSpec:
     type: string
-    default: '@profullstack/threatcrush@latest'
-    description: npm spec used to install the CLI.
+    default: '@profullstack/threatcrush@0.11.0'
+    description: >-
+      npm spec used to install the CLI. Pinned, not `@latest`: a scanner that
+      runs on every pull request is a dependency, and `@latest` means one bad
+      publish breaks CI in every repo that installed this pack at once — which
+      is exactly what a `workspace:` protocol slip in 0.7.0/0.7.1 did. Bump this
+      deliberately, in a pack release, so the fleet re-syncs consumers to a
+      version that was checked first.
   failOn:
     type: string
     default: ''
