@@ -51,24 +51,29 @@ jobs:
               return decode(await raw(session,op,args))
 
           def pick_lease(sessions):
-              candidates=[]
-              for row in walk(sessions):
-                  if str(row.get('display') or '') != ':99': continue
-                  lease=str(row.get('lease_id') or '').strip()
-                  if not lease: continue
-                  live=(row.get('active') is True or row.get('alive') is True or str(row.get('state') or '').lower() in {'running','active','live'})
-                  if live: candidates.append(lease)
-              uniq=[]
-              for x in candidates:
-                  if x not in uniq: uniq.append(x)
-              if len(uniq)!=1:
-                  raise RuntimeError(f'expected exactly one live :99 application lease, observed {len(uniq)}')
-              return uniq[0]
+              rows=list(walk(sessions))
+              # Public sessions projection keeps lease custody and physical
+              # session liveness in separate nested records. Reconcile them by
+              # invariant instead of assuming one flat row.
+              live_application=any(
+                  str(row.get('display') or '')==':99' and
+                  (row.get('active') is True or row.get('alive') is True or str(row.get('state') or '').lower() in {'running','active','live'})
+                  for row in rows
+              )
+              if not live_application:
+                  raise RuntimeError('no live :99 CUX application session; refuse provider navigation without guarded run.start')
+              leases=[]
+              for row in rows:
+                  value=str(row.get('lease_id') or '').strip()
+                  if value and value not in leases:
+                      leases.append(value)
+              if len(leases)!=1:
+                  raise RuntimeError(f'expected exactly one unique CUX application lease, observed {len(leases)}')
+              return leases[0]
 
           async def expect(session, lease, text):
               try:
                   r=await raw(session,'computerusex.form.expect',{'lease_id':lease,'text':text,'wait_seconds':1.5})
-                  # isError is authoritative; do not print page contents.
                   return not bool(getattr(r,'isError',False))
               except Exception:
                   return False
