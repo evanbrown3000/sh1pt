@@ -1,0 +1,46 @@
+name: Cognilode public MCP read-only probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/cognilode-public-mcp-readonly-probe.yml'
+      - '.github/cognilode-public-mcp-probe-trigger.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check 'mcp==1.29.0'
+      - name: Read public Cognilode capability catalog only
+        shell: bash
+        run: |
+          python - <<'PY'
+          import asyncio, json
+          from mcp import ClientSession
+          from mcp.client.streamable_http import streamable_http_client
+
+          async def main():
+              async with streamable_http_client('https://mcp.cognilode.com/mcp') as (read, write, _):
+                  async with ClientSession(read, write) as session:
+                      await session.initialize()
+                      tools = await session.list_tools()
+                      print('TOOL_NAMES=' + json.dumps(sorted(t.name for t in tools.tools)))
+                      result = await session.call_tool('multi_tool', {
+                          'operation': 'capabilities.catalog',
+                          'arguments': {},
+                      })
+                      for part in result.content:
+                          text = getattr(part, 'text', '')
+                          if text:
+                              print('CATALOG=' + text)
+          asyncio.run(main())
+          PY
