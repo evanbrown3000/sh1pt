@@ -1,0 +1,55 @@
+name: Cognilode public MCP CUX skill probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/cognilode-public-mcp-cux-skills.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  skills:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check 'mcp==1.29.0'
+      - name: Read focused ComputerUseX operation skills
+        shell: bash
+        run: |
+          python - <<'PY'
+          import asyncio, json
+          from mcp import ClientSession
+          from mcp.client.streamable_http import streamable_http_client
+
+          OPS = [
+              'computerusex.tools.status',
+              'computerusex.tools.sessions',
+              'computerusex.run.start',
+              'computerusex.browser.goto',
+              'computerusex.form.expect',
+              'computerusex.form.fill',
+              'computerusex.form.click',
+          ]
+
+          async def main():
+              async with streamable_http_client('https://mcp.cognilode.com/mcp') as (read, write, _):
+                  async with ClientSession(read, write) as session:
+                      await session.initialize()
+                      for op in OPS:
+                          result = await session.call_tool('multi_tool', {
+                              'operation': '__skill__',
+                              'arguments': {'operation': op},
+                          })
+                          print('\n===SKILL ' + op + '===')
+                          for part in result.content:
+                              text = getattr(part, 'text', '')
+                              if text:
+                                  print(text)
+          asyncio.run(main())
+          PY
