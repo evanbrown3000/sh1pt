@@ -1,0 +1,94 @@
+name: Cognilode CUX provider state
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/cognilode-cux-provider-state.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check 'mcp==1.29.0'
+      - name: Read sanitized CUX application/provider state
+        shell: bash
+        run: |
+          python - <<'PY'
+          import asyncio, json
+          from urllib.parse import urlparse
+          from mcp import ClientSession
+          from mcp.client.streamable_http import streamable_http_client
+
+          def decode(result):
+              texts=[getattr(p,'text','') for p in result.content if getattr(p,'text','')]
+              for text in texts:
+                  try:
+                      obj=json.loads(text)
+                      return obj.get('result', obj) if isinstance(obj,dict) else obj
+                  except Exception:
+                      continue
+              return {}
+
+          def walk(obj):
+              if isinstance(obj,dict):
+                  yield obj
+                  for v in obj.values(): yield from walk(v)
+              elif isinstance(obj,list):
+                  for v in obj: yield from walk(v)
+
+          def urls(obj):
+              out=[]
+              for row in walk(obj):
+                  for k,v in row.items():
+                      if isinstance(v,str) and k.lower() in {'url','last_url','current_url'} and v.startswith(('http://','https://')):
+                          out.append(v)
+              return out
+
+          async def call(session, op, args=None):
+              return decode(await session.call_tool('multi_tool', {'operation':op,'arguments':args or {}}))
+
+          async def main():
+              async with streamable_http_client('https://mcp.cognilode.com/mcp') as (read, write, _):
+                  async with ClientSession(read, write) as session:
+                      await session.initialize()
+                      status=await call(session,'computerusex.tools.status')
+                      sessions=await call(session,'computerusex.tools.sessions')
+                      windows=await call(session,'computerusex.tools.browser_windows')
+
+                      rows=list(walk(sessions))
+                      live=[]
+                      for row in rows:
+                          active=row.get('active')
+                          alive=row.get('alive')
+                          state=str(row.get('state') or '').lower()
+                          display=str(row.get('display') or '')
+                          if active is True or alive is True or state in {'running','active','live'}:
+                              live.append(row)
+                      all_urls=urls(sessions)+urls(windows)
+                      hosts=[]
+                      for u in all_urls:
+                          try:
+                              h=(urlparse(u).hostname or '').lower()
+                          except Exception:
+                              h=''
+                          if h and h not in hosts: hosts.append(h)
+                      qmee_present=any(h=='qmee.com' or h.endswith('.qmee.com') for h in hosts)
+                      # Never emit lease/session IDs, full URLs, titles, DOM text, cookies, or credentials.
+                      print(json.dumps({
+                          'status_available': bool(status),
+                          'live_session_candidates': len(live),
+                          'managed_hostnames': hosts[:20],
+                          'qmee_present': qmee_present,
+                          'application_display_present': any(str(r.get('display') or '')==':99' for r in rows),
+                      }, sort_keys=True))
+          asyncio.run(main())
+          PY
