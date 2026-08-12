@@ -1,4 +1,4 @@
-name: Cognilode CUX Qmee observe
+name: Cognilode CUX Qmee reconcile
 
 on:
   workflow_dispatch:
@@ -11,25 +11,27 @@ permissions:
   contents: read
 
 jobs:
-  observe:
+  reconcile:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 5
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check 'mcp==1.29.0'
-      - name: Reuse one CUX application lease and classify Qmee state
+      - name: Reconcile prior Qmee navigation postcondition read-only
         shell: bash
         run: |
           python - <<'PY'
           import asyncio, json
+          from urllib.parse import urlparse
           from mcp import ClientSession
           from mcp.client.streamable_http import streamable_http_client
 
           def decode(result):
-              texts=[getattr(p,'text','') for p in result.content if getattr(p,'text','')]
-              for text in texts:
+              for part in result.content:
+                  text=getattr(part,'text','')
+                  if not text: continue
                   try:
                       obj=json.loads(text)
                       return obj.get('result', obj) if isinstance(obj,dict) else obj
@@ -44,68 +46,50 @@ jobs:
               elif isinstance(obj,list):
                   for v in obj: yield from walk(v)
 
-          async def raw(session, op, args=None):
-              return await session.call_tool('multi_tool', {'operation':op,'arguments':args or {}})
-
           async def call(session, op, args=None):
-              return decode(await raw(session,op,args))
+              r=await session.call_tool('multi_tool', {'operation':op,'arguments':args or {}})
+              return decode(r)
 
-          def pick_lease(sessions):
-              rows=list(walk(sessions))
-              # Public sessions projection keeps lease custody and physical
-              # session liveness in separate nested records. Reconcile them by
-              # invariant instead of assuming one flat row.
-              live_application=any(
-                  str(row.get('display') or '')==':99' and
-                  (row.get('active') is True or row.get('alive') is True or str(row.get('state') or '').lower() in {'running','active','live'})
-                  for row in rows
-              )
-              if not live_application:
-                  raise RuntimeError('no live :99 CUX application session; refuse provider navigation without guarded run.start')
-              leases=[]
-              for row in rows:
-                  value=str(row.get('lease_id') or '').strip()
-                  if value and value not in leases:
-                      leases.append(value)
-              if len(leases)!=1:
-                  raise RuntimeError(f'expected exactly one unique CUX application lease, observed {len(leases)}')
-              return leases[0]
-
-          async def expect(session, lease, text):
-              try:
-                  r=await raw(session,'computerusex.form.expect',{'lease_id':lease,'text':text,'wait_seconds':1.5})
-                  return not bool(getattr(r,'isError',False))
-              except Exception:
-                  return False
+          def urls(obj):
+              out=[]
+              for row in walk(obj):
+                  for k,v in row.items():
+                      if isinstance(v,str) and k.lower() in {'url','last_url','current_url'} and v.startswith(('http://','https://')):
+                          out.append(v)
+              return out
 
           async def main():
               async with streamable_http_client('https://mcp.cognilode.com/mcp') as (read, write, _):
                   async with ClientSession(read, write) as session:
                       await session.initialize()
                       sessions=await call(session,'computerusex.tools.sessions')
-                      lease=pick_lease(sessions)
-                      nav=await raw(session,'computerusex.browser.goto',{
-                          'lease_id':lease,
-                          'url':'https://www.qmee.com/en-us',
-                          'wait_seconds':8.0,
-                          'expect_text':None,
-                      })
-                      if bool(getattr(nav,'isError',False)):
-                          raise RuntimeError('Qmee navigation failed through existing CUX application lease')
-                      markers={}
-                      for text in ['My Qmee','Surveys','Cash out','Cashback','Deals','Log in to your account','Log in','Sign up for free','Sign Up']:
-                          markers[text]=await expect(session,lease,text)
-                      authenticated=(markers['My Qmee'] or markers['Surveys'] or markers['Cash out'] or markers['Cashback'] or markers['Deals']) and not markers['Log in to your account']
+                      windows=await call(session,'computerusex.tools.browser_windows')
+                      status=await call(session,'computerusex.tools.status')
+                      rows=list(walk(sessions))
+                      live99=any(str(r.get('display') or '')==':99' and (r.get('active') is True or r.get('alive') is True or str(r.get('state') or '').lower() in {'running','active','live'}) for r in rows)
+                      leases=[]
+                      categories=[]
+                      for r in rows:
+                          lease=str(r.get('lease_id') or '').strip()
+                          if lease and lease not in leases:
+                              leases.append(lease)
+                              if lease.startswith('cux-public-'): cat='public'
+                              elif lease.startswith('business-'): cat='business'
+                              else: cat='other'
+                              if cat not in categories: categories.append(cat)
+                      hosts=[]
+                      for u in urls(sessions)+urls(windows):
+                          try: h=(urlparse(u).hostname or '').lower()
+                          except Exception: h=''
+                          if h and h not in hosts: hosts.append(h)
+                      qmee=any(h=='qmee.com' or h.endswith('.qmee.com') for h in hosts)
                       print(json.dumps({
-                          'navigation_ok': True,
-                          'authenticated_qmee': bool(authenticated),
-                          'cashout_visible': bool(markers['Cash out']),
-                          'survey_inventory_visible': bool(markers['Surveys']),
-                          'cashback_visible': bool(markers['Cashback']),
-                          'deals_visible': bool(markers['Deals']),
-                          'login_surface_visible': bool(markers['Log in to your account'] or markers['Log in']),
-                          'signup_surface_visible': bool(markers['Sign up for free'] or markers['Sign Up']),
-                          'reused_existing_application_lease': True,
+                          'live_application_display_99': live99,
+                          'unique_lease_count': len(leases),
+                          'lease_categories': categories,
+                          'managed_hostnames': hosts[:20],
+                          'qmee_postcondition_present': qmee,
+                          'status_available': bool(status),
                       }, sort_keys=True))
           asyncio.run(main())
           PY
