@@ -54,6 +54,10 @@ See [`CLI_INTEGRATIONS.md`](./CLI_INTEGRATIONS.md) for the CLI-backed integratio
 - [verification-layer](https://www.npmjs.com/package/verification-layer) — HIPAA compliance scanner for healthcare code.
 - [threatcrush.com](https://threatcrush.com) — all-in-one security agent: code scanning, secrets, and API pentesting.
 
+### Production operations resource
+
+- [Production ML Deployment Triage](https://leanpub.com/production-ml-deployment-triage) — Evan Brown’s live Leanpub ebook for production ML deployment work. Minimum price $19; suggested price $29.
+
 ### Ships to
 
 **Web / hosting**
