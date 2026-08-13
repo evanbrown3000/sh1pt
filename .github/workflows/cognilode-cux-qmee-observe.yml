@@ -1,4 +1,4 @@
-name: Cognilode CUX Qmee classify current
+name: Cognilode CUX Qmee single-capture classify
 
 on:
   workflow_dispatch:
@@ -13,30 +13,29 @@ permissions:
 jobs:
   classify:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check 'mcp==1.29.0'
-      - name: Classify current Qmee page through one existing CUX lease
+      - name: Classify current Qmee page from exact CUX tab capture
         shell: bash
         run: |
           python - <<'PY'
-          import asyncio, json
+          import asyncio, json, re
+          from urllib.parse import urlparse
           from mcp import ClientSession
           from mcp.client.streamable_http import streamable_http_client
 
-          def decode(result):
+          def parse_texts(result):
+              out=[]
               for part in result.content:
                   text=getattr(part,'text','')
                   if not text: continue
-                  try:
-                      obj=json.loads(text)
-                      return obj.get('result', obj) if isinstance(obj,dict) else obj
-                  except Exception:
-                      continue
-              return {}
+                  try: out.append(json.loads(text))
+                  except Exception: pass
+              return out
 
           def walk(obj):
               if isinstance(obj,dict):
@@ -45,52 +44,96 @@ jobs:
               elif isinstance(obj,list):
                   for v in obj: yield from walk(v)
 
-          async def raw(session, op, args=None):
-              return await session.call_tool('multi_tool', {'operation':op,'arguments':args or {}})
+          def first_value(obj, key):
+              for row in walk(obj):
+                  value=row.get(key)
+                  if value not in (None,''): return value
+              return None
 
           async def call(session, op, args=None):
-              return decode(await raw(session,op,args))
-
-          def pick_lease(sessions):
-              rows=list(walk(sessions))
-              live99=any(str(r.get('display') or '')==':99' and (r.get('active') is True or r.get('alive') is True or str(r.get('state') or '').lower() in {'running','active','live'}) for r in rows)
-              if not live99: raise RuntimeError('no live :99 CUX application session')
-              leases=[]
-              for r in rows:
-                  lease=str(r.get('lease_id') or '').strip()
-                  if lease and lease not in leases: leases.append(lease)
-              if len(leases)!=1: raise RuntimeError(f'expected one unique application lease, observed {len(leases)}')
-              return leases[0]
-
-          async def expect(session, lease, text):
-              r=await raw(session,'computerusex.form.expect',{'lease_id':lease,'text':text,'wait_seconds':1.5})
-              return not bool(getattr(r,'isError',False))
+              r=await session.call_tool('multi_tool', {'operation':op,'arguments':args or {}})
+              if bool(getattr(r,'isError',False)):
+                  raise RuntimeError(f'{op} returned owner error')
+              values=parse_texts(r)
+              return values[0].get('result',values[0]) if values and isinstance(values[0],dict) else (values[0] if values else {})
 
           async def main():
-              async with streamable_http_client('https://mcp.cognilode.com/mcp') as (read, write, _):
-                  async with ClientSession(read, write) as session:
-                      await session.initialize()
-                      lease=pick_lease(await call(session,'computerusex.tools.sessions'))
-                      markers={}
-                      for text in ['My Qmee','Surveys','Cash out','Cashback','Deals','Gaming','Log in to your account','Log in','Sign up for free','Sign Up','Your balance','PayPal','Venmo']:
-                          try: markers[text]=await expect(session,lease,text)
-                          except Exception: markers[text]=False
-                      login=markers['Log in to your account'] or markers['Log in']
-                      account=markers['My Qmee'] or markers['Surveys'] or markers['Cash out'] or markers['Cashback'] or markers['Deals'] or markers['Gaming'] or markers['Your balance']
+              async with streamable_http_client('https://mcp.cognilode.com/mcp') as (read,write,_):
+                  async with ClientSession(read,write) as s:
+                      await s.initialize()
+                      windows=await call(s,'computerusex.tools.browser_windows',{})
+                      qmee=[]
+                      for row in walk(windows):
+                          u=str(row.get('url') or '')
+                          tid=str(row.get('target_id') or '')
+                          try: host=(urlparse(u).hostname or '').lower()
+                          except Exception: host=''
+                          if tid and (host=='qmee.com' or host.endswith('.qmee.com')):
+                              qmee.append((tid,u))
+                      uniq=[]
+                      for item in qmee:
+                          if item[0] not in {x[0] for x in uniq}: uniq.append(item)
+                      if len(uniq)!=1:
+                          raise RuntimeError(f'expected one exact live Qmee target, observed {len(uniq)}')
+                      target_id=uniq[0][0]
+                      capture=await call(s,'computerusex.tools.browser_tab_capture',{
+                          'target_id':target_id,
+                          'cdp_endpoint':'',
+                          'output_dir':None,
+                          'run_ocr':False,
+                          'run_omniparser':False,
+                          'ocr_provider':'auto',
+                          'lang':'eng',
+                      })
+                      screenshot=str(first_value(capture,'screenshot_path') or '')
+                      if not screenshot:
+                          raise RuntimeError('Qmee exact tab capture returned no screenshot path')
+                      analyzed=await call(s,'computerusex.tools.image',{
+                          'image_path':screenshot,
+                          'output_dir':None,
+                          'run_ocr':True,
+                          'run_omniparser':False,
+                          'ocr_provider':'auto',
+                          'lang':'eng',
+                      })
+                      # Search only in-memory tool response strings. Nothing private is logged.
+                      strings=[]
+                      for row in walk(analyzed):
+                          for v in row.values():
+                              if isinstance(v,str): strings.append(v)
+                      text='\n'.join(strings).casefold()
+                      login=bool(re.search(r'\blog in\b|log in to your account|forgot(?:ten)? password',text))
+                      signup=bool(re.search(r'\bsign up\b|sign up for free',text))
+                      cashout=bool(re.search(r'cash\s*out|cashout|withdraw',text))
+                      balance=bool(re.search(r'your balance|balance\s*[:$]',text))
+                      paypal='paypal' in text
+                      venmo='venmo' in text
+                      surveys='survey' in text
+                      cashback='cashback' in text
+                      deals=bool(re.search(r'\bdeals?\b',text))
+                      gaming=bool(re.search(r'\bgaming\b|\bgames?\b',text))
+                      account=any([cashout,balance,surveys,cashback,deals,gaming])
+                      # Detect whether a visible dollar amount is at least $5, but never log amount.
+                      amounts=[]
+                      for raw in re.findall(r'\$\s*([0-9]+(?:\.[0-9]{1,2})?)',text):
+                          try: amounts.append(float(raw))
+                          except ValueError: pass
                       print(json.dumps({
-                          'authenticated_qmee': bool(account and not login),
-                          'cashout_visible': bool(markers['Cash out']),
-                          'balance_label_visible': bool(markers['Your balance']),
-                          'paypal_visible': bool(markers['PayPal']),
-                          'venmo_visible': bool(markers['Venmo']),
-                          'survey_inventory_visible': bool(markers['Surveys']),
-                          'cashback_visible': bool(markers['Cashback']),
-                          'deals_visible': bool(markers['Deals']),
-                          'gaming_visible': bool(markers['Gaming']),
-                          'login_surface_visible': bool(login),
-                          'signup_surface_visible': bool(markers['Sign up for free'] or markers['Sign Up']),
-                          'reused_existing_application_lease': True,
-                          'navigation_replayed': False,
-                      }, sort_keys=True))
+                          'authenticated_qmee':bool(account and not login),
+                          'login_surface_visible':login,
+                          'signup_surface_visible':signup,
+                          'cashout_visible':cashout,
+                          'balance_label_visible':balance,
+                          'visible_balance_or_reward_ge_5':any(x>=5.0 for x in amounts),
+                          'paypal_visible':paypal,
+                          'venmo_visible':venmo,
+                          'survey_inventory_visible':surveys,
+                          'cashback_visible':cashback,
+                          'deals_visible':deals,
+                          'gaming_visible':gaming,
+                          'exact_qmee_target_count':1,
+                          'navigation_replayed':False,
+                          'private_page_content_logged':False,
+                      },sort_keys=True))
           asyncio.run(main())
           PY
