@@ -1,4 +1,4 @@
-name: Cognilode CUX Qmee single-capture classify
+name: Cognilode CUX bounded Ticketmaster scan
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  classify:
+  scan:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check 'mcp==1.29.0'
-      - name: Classify current Qmee page from exact CUX tab capture
+      - name: Scan exact current Ticketmaster tab without purchase
         shell: bash
         run: |
           python - <<'PY'
@@ -28,12 +28,18 @@ jobs:
           from mcp import ClientSession
           from mcp.client.streamable_http import streamable_http_client
 
+          MAX_PER_TICKET=40.0
+          MAX_TOTAL_EXPOSURE=50.0
+          MIN_POST_FEE_ROI=0.30
+          BUYER_FEE_EST=0.10
+          SELLER_FEE_EST=0.15
+
           def parse_texts(result):
               out=[]
               for part in result.content:
-                  text=getattr(part,'text','')
-                  if not text: continue
-                  try: out.append(json.loads(text))
+                  t=getattr(part,'text','')
+                  if not t: continue
+                  try: out.append(json.loads(t))
                   except Exception: pass
               return out
 
@@ -44,95 +50,89 @@ jobs:
               elif isinstance(obj,list):
                   for v in obj: yield from walk(v)
 
-          def first_value(obj, key):
+          def first_value(obj,key):
               for row in walk(obj):
-                  value=row.get(key)
-                  if value not in (None,''): return value
+                  v=row.get(key)
+                  if v not in (None,''): return v
               return None
 
-          async def call(session, op, args=None):
-              r=await session.call_tool('multi_tool', {'operation':op,'arguments':args or {}})
-              if bool(getattr(r,'isError',False)):
-                  raise RuntimeError(f'{op} returned owner error')
-              values=parse_texts(r)
-              return values[0].get('result',values[0]) if values and isinstance(values[0],dict) else (values[0] if values else {})
+          async def call(s,op,args=None):
+              r=await s.call_tool('multi_tool',{'operation':op,'arguments':args or {}})
+              if bool(getattr(r,'isError',False)): raise RuntimeError(f'{op} owner error')
+              vals=parse_texts(r)
+              return vals[0].get('result',vals[0]) if vals and isinstance(vals[0],dict) else (vals[0] if vals else {})
 
           async def main():
               async with streamable_http_client('https://mcp.cognilode.com/mcp') as (read,write,_):
                   async with ClientSession(read,write) as s:
                       await s.initialize()
+                      status=await call(s,'computerusex.tools.status',{})
+                      status_strings=[]
+                      for row in walk(status):
+                          for v in row.values():
+                              if isinstance(v,str): status_strings.append(v.casefold())
+                      active_ticket_owner=any(('ticket' in x or 'resale' in x) for x in status_strings)
+
                       windows=await call(s,'computerusex.tools.browser_windows',{})
-                      qmee=[]
+                      targets=[]
                       for row in walk(windows):
                           u=str(row.get('url') or '')
                           tid=str(row.get('target_id') or '')
+                          title=str(row.get('title') or '')
                           try: host=(urlparse(u).hostname or '').lower()
                           except Exception: host=''
-                          if tid and (host=='qmee.com' or host.endswith('.qmee.com')):
-                              qmee.append((tid,u))
+                          if tid and (host=='ticketmaster.com' or host.endswith('.ticketmaster.com')):
+                              targets.append((tid,u,title))
                       uniq=[]
-                      for item in qmee:
-                          if item[0] not in {x[0] for x in uniq}: uniq.append(item)
+                      for x in targets:
+                          if x[0] not in {y[0] for y in uniq}: uniq.append(x)
                       if len(uniq)!=1:
-                          raise RuntimeError(f'expected one exact live Qmee target, observed {len(uniq)}')
-                      target_id=uniq[0][0]
-                      capture=await call(s,'computerusex.tools.browser_tab_capture',{
-                          'target_id':target_id,
-                          'cdp_endpoint':'',
-                          'output_dir':None,
-                          'run_ocr':False,
-                          'run_omniparser':False,
-                          'ocr_provider':'auto',
-                          'lang':'eng',
-                      })
-                      screenshot=str(first_value(capture,'screenshot_path') or '')
-                      if not screenshot:
-                          raise RuntimeError('Qmee exact tab capture returned no screenshot path')
-                      analyzed=await call(s,'computerusex.tools.image',{
-                          'image_path':screenshot,
-                          'output_dir':None,
-                          'run_ocr':True,
-                          'run_omniparser':False,
-                          'ocr_provider':'auto',
-                          'lang':'eng',
-                      })
-                      # Search only in-memory tool response strings. Nothing private is logged.
+                          print(json.dumps({'ticketmaster_target_count':len(uniq),'active_ticket_owner':active_ticket_owner,'purchase_attempted':False,'qualified_purchase':False,'reason':'no_single_exact_ticketmaster_target'},sort_keys=True))
+                          return
+                      tid,url,title=uniq[0]
+                      cap=await call(s,'computerusex.tools.browser_tab_capture',{'target_id':tid,'cdp_endpoint':'','output_dir':None,'run_ocr':False,'run_omniparser':False,'ocr_provider':'auto','lang':'eng'})
+                      shot=str(first_value(cap,'screenshot_path') or '')
+                      if not shot: raise RuntimeError('capture returned no screenshot path')
+                      analyzed=await call(s,'computerusex.tools.image',{'image_path':shot,'output_dir':None,'run_ocr':True,'run_omniparser':False,'ocr_provider':'auto','lang':'eng'})
                       strings=[]
                       for row in walk(analyzed):
                           for v in row.values():
                               if isinstance(v,str): strings.append(v)
-                      text='\n'.join(strings).casefold()
-                      login=bool(re.search(r'\blog in\b|log in to your account|forgot(?:ten)? password',text))
-                      signup=bool(re.search(r'\bsign up\b|sign up for free',text))
-                      cashout=bool(re.search(r'cash\s*out|cashout|withdraw',text))
-                      balance=bool(re.search(r'your balance|balance\s*[:$]',text))
-                      paypal='paypal' in text
-                      venmo='venmo' in text
-                      surveys='survey' in text
-                      cashback='cashback' in text
-                      deals=bool(re.search(r'\bdeals?\b',text))
-                      gaming=bool(re.search(r'\bgaming\b|\bgames?\b',text))
-                      account=any([cashout,balance,surveys,cashback,deals,gaming])
-                      # Detect whether a visible dollar amount is at least $5, but never log amount.
+                      text='\n'.join(strings)
+                      folded=text.casefold()
                       amounts=[]
                       for raw in re.findall(r'\$\s*([0-9]+(?:\.[0-9]{1,2})?)',text):
-                          try: amounts.append(float(raw))
+                          try:
+                              x=float(raw)
+                              if 1<=x<=5000: amounts.append(x)
                           except ValueError: pass
+                      low=min(amounts) if amounts else None
+                      transfer=bool(re.search(r'transfer|transferable',folded))
+                      resale=bool(re.search(r'verified resale|resale ticket|sell tickets|ticket resale',folded))
+                      face_value_only='face value exchange' in folded
+                      # Same-seat/section cross-market comparator is intentionally required.
+                      # A Ticketmaster screenshot alone cannot prove comparable resale net.
+                      same_inventory_comparator=False
+                      qualified=False
+                      reason='same_inventory_cross_market_comparator_missing'
+                      if low is not None and low>MAX_PER_TICKET: reason='primary_price_above_per_ticket_cap'
+                      elif low is not None and low*(1+BUYER_FEE_EST)>MAX_TOTAL_EXPOSURE: reason='all_in_exposure_above_total_cap'
+                      elif face_value_only: reason='face_value_only_resale'
+                      elif not (transfer or resale): reason='transfer_resale_permission_unproven'
                       print(json.dumps({
-                          'authenticated_qmee':bool(account and not login),
-                          'login_surface_visible':login,
-                          'signup_surface_visible':signup,
-                          'cashout_visible':cashout,
-                          'balance_label_visible':balance,
-                          'visible_balance_or_reward_ge_5':any(x>=5.0 for x in amounts),
-                          'paypal_visible':paypal,
-                          'venmo_visible':venmo,
-                          'survey_inventory_visible':surveys,
-                          'cashback_visible':cashback,
-                          'deals_visible':deals,
-                          'gaming_visible':gaming,
-                          'exact_qmee_target_count':1,
-                          'navigation_replayed':False,
+                          'ticketmaster_target_count':1,
+                          'active_ticket_owner':active_ticket_owner,
+                          'public_page_title':title[:160],
+                          'visible_price_observed':low is not None,
+                          'visible_low_price_le_40':bool(low is not None and low<=MAX_PER_TICKET),
+                          'all_in_exposure_le_50':bool(low is not None and low*(1+BUYER_FEE_EST)<=MAX_TOTAL_EXPOSURE),
+                          'transfer_or_resale_marker_visible':bool(transfer or resale),
+                          'face_value_only_marker_visible':face_value_only,
+                          'same_inventory_comparator_proven':same_inventory_comparator,
+                          'required_post_fee_roi':MIN_POST_FEE_ROI,
+                          'qualified_purchase':qualified,
+                          'purchase_attempted':False,
+                          'reason':reason,
                           'private_page_content_logged':False,
                       },sort_keys=True))
           asyncio.run(main())
