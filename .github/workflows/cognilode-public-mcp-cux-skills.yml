@@ -1,4 +1,4 @@
-name: Cognilode public MCP CUX skill probe
+name: Cognilode public MCP CUX observation skill probe
 
 on:
   workflow_dispatch:
@@ -19,22 +19,19 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check 'mcp==1.29.0'
-      - name: Read focused ComputerUseX operation skills
+      - name: Read single-call CUX observation and runtime-health schemas
         shell: bash
         run: |
           python - <<'PY'
-          import asyncio, json
+          import asyncio
           from mcp import ClientSession
           from mcp.client.streamable_http import streamable_http_client
 
           OPS = [
-              'computerusex.tools.status',
-              'computerusex.tools.sessions',
-              'computerusex.run.start',
-              'computerusex.browser.goto',
-              'computerusex.form.expect',
-              'computerusex.form.fill',
-              'computerusex.form.click',
+              'computerusex.capture',
+              'computerusex.capture.latest',
+              'computerusex.dom.resolve',
+              'computerusex.tools.runtime_health',
           ]
 
           async def main():
