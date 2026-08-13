@@ -1,4 +1,4 @@
-name: Cognilode CUX Prime Opinion saved-auth attempt
+name: Cognilode CUX current cash-provider executor
 
 on:
   workflow_dispatch:
@@ -11,22 +11,30 @@ permissions:
   contents: read
 
 jobs:
-  prime:
+  execute:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 7
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check 'mcp==1.29.0'
-      - name: Reuse current Prime Opinion CUX lease and try saved login once
+      - name: Act on current provider in one MCP session without navigation
         shell: bash
         run: |
           python - <<'PY'
-          import asyncio,json
+          import asyncio, json
           from urllib.parse import urlparse
           from mcp import ClientSession
           from mcp.client.streamable_http import streamable_http_client
+
+          PROVIDERS={
+              'qmee.com': {'id':'qmee','login':['Log in','Log in to your account'],'account':['My Qmee','Surveys','Cashback','Deals'],'cashout':['Cash out']},
+              'primeopinion.com': {'id':'prime_opinion','login':['Log in'],'account':['Rewards','Paid surveys'],'cashout':['Redeem']},
+              'fivesurveys.com': {'id':'five_surveys','login':['Log in','Sign up'],'account':['Complete 5 Surveys','balance'],'cashout':['Redeem']},
+              'freecash.com': {'id':'freecash','login':['Sign In'],'account':['Earn','Offers','Cashout'],'cashout':['Cashout','Cash out']},
+              'attapoll.app': {'id':'attapoll','login':[],'account':['Paid Surveys'],'cashout':[]},
+          }
 
           def decode(r):
               for p in r.content:
@@ -44,43 +52,106 @@ jobs:
                   for v in o: yield from walk(v)
           async def raw(s,op,args=None): return await s.call_tool('multi_tool',{'operation':op,'arguments':args or {}})
           async def call(s,op,args=None): return decode(await raw(s,op,args))
+          async def expect(s,lease,text,wait=1.0):
+              r=await raw(s,'computerusex.form.expect',{'lease_id':lease,'text':text,'wait_seconds':wait})
+              return not bool(getattr(r,'isError',False))
+          async def click(s,lease,selector,high=False):
+              r=await raw(s,'computerusex.form.click',{'lease_id':lease,'selector':selector,'effect_class':'final_submit','allow_submit':True,'allow_high_effect':bool(high)})
+              return not bool(getattr(r,'isError',False))
           def lease_of(sessions):
-              rows=list(walk(sessions)); live99=any(str(r.get('display') or '')==':99' and (r.get('active') is True or r.get('alive') is True or str(r.get('state') or '').lower() in {'active','live','running'}) for r in rows)
-              if not live99: raise RuntimeError('no live :99 application session')
+              rows=list(walk(sessions))
+              live99=any(str(r.get('display') or '')==':99' and (r.get('active') is True or r.get('alive') is True or str(r.get('state') or '').lower() in {'active','live','running'}) for r in rows)
+              if not live99: raise RuntimeError('no live :99 application session; refuse to start another browser')
               xs=[]
               for r in rows:
                   x=str(r.get('lease_id') or '').strip()
                   if x and x not in xs: xs.append(x)
-              if len(xs)!=1: raise RuntimeError(f'expected one unique application lease, observed {len(xs)}')
+              if len(xs)!=1: raise RuntimeError(f'expected exactly one unique application lease, observed {len(xs)}')
               return xs[0]
-          async def expect(s,lease,text):
-              r=await raw(s,'computerusex.form.expect',{'lease_id':lease,'text':text,'wait_seconds':1.25})
-              return not bool(getattr(r,'isError',False))
+          def current_provider(windows):
+              hits=[]
+              for r in walk(windows):
+                  u=str(r.get('url') or '')
+                  try: host=(urlparse(u).hostname or '').lower()
+                  except Exception: host=''
+                  for domain,spec in PROVIDERS.items():
+                      if host==domain or host.endswith('.'+domain): hits.append((host,spec))
+              uniq=[]
+              for host,spec in hits:
+                  if spec['id'] not in {x[1]['id'] for x in uniq}: uniq.append((host,spec))
+              if len(uniq)!=1: return None, None, len(uniq)
+              return uniq[0][0], uniq[0][1], 1
+
+          async def first_marker(s,lease,labels):
+              for label in labels:
+                  try:
+                      if await expect(s,lease,label): return label
+                  except Exception: pass
+              return ''
 
           async def main():
               async with streamable_http_client('https://mcp.cognilode.com/mcp') as (rd,wr,_):
                   async with ClientSession(rd,wr) as s:
                       await s.initialize()
-                      sessions=await call(s,'computerusex.tools.sessions',{}); lease=lease_of(sessions)
-                      windows=await call(s,'computerusex.tools.browser_windows',{})
-                      prime=False
-                      for r in walk(windows):
-                          u=str(r.get('url') or '')
-                          try: h=(urlparse(u).hostname or '').lower()
-                          except Exception: h=''
-                          if h=='primeopinion.com' or h.endswith('.primeopinion.com'): prime=True
-                      if not prime:
-                          print(json.dumps({'primeopinion_current':False,'login_submit_attempted':False,'reason':'provider_moved_before_effect'},sort_keys=True)); return
-                      login=await expect(s,lease,'Log in')
-                      rewards=await expect(s,lease,'Rewards')
-                      attempted=False; submit_owner_error=False
-                      if login and not rewards:
-                          attempted=True
-                          r=await raw(s,'computerusex.form.click',{'lease_id':lease,'selector':'button[type=submit]','effect_class':'final_submit','allow_submit':True,'allow_high_effect':False})
-                          submit_owner_error=bool(getattr(r,'isError',False))
-                      after_rewards=await expect(s,lease,'Rewards')
-                      after_login=await expect(s,lease,'Log in')
-                      authenticated=bool(after_rewards and not after_login)
-                      print(json.dumps({'primeopinion_current':True,'login_surface_before':login,'rewards_before':rewards,'login_submit_attempted':attempted,'submit_owner_error':submit_owner_error,'authenticated_after_saved_login_attempt':authenticated,'provider_side_auth_attempt':attempted,'credentials_logged':False},sort_keys=True))
+                      lease=lease_of(await call(s,'computerusex.tools.sessions',{}))
+                      host,spec,count=current_provider(await call(s,'computerusex.tools.browser_windows',{}))
+                      if spec is None:
+                          print(json.dumps({'provider_count':count,'provider_side_effect':False,'action':'none','reason':'no_single_supported_current_provider'},sort_keys=True)); return
+
+                      # Recheck the provider in this SAME session before each effect; never navigate.
+                      cashout=await first_marker(s,lease,spec['cashout'])
+                      account=await first_marker(s,lease,spec['account'])
+                      login=await first_marker(s,lease,spec['login'])
+                      action='observe_only'; effect=False; owner_error=False
+
+                      if cashout:
+                          ok=await click(s,lease,'text='+cashout,high=True)
+                          action='cashout_open'; effect=True; owner_error=not ok
+                          # Advance only provider-native payout controls visible after opening cashout.
+                          if ok:
+                              paypal=await first_marker(s,lease,['PayPal'])
+                              venmo=await first_marker(s,lease,['Venmo'])
+                              payout=paypal or venmo
+                              if payout:
+                                  ok2=await click(s,lease,'text='+payout,high=True)
+                                  action='payout_method_select'; effect=True; owner_error=owner_error or (not ok2)
+                                  if ok2:
+                                      confirm=await first_marker(s,lease,['Confirm','Redeem','Withdraw','Cash out','Cashout'])
+                                      if confirm:
+                                          ok3=await click(s,lease,'text='+confirm,high=True)
+                                          action='payout_confirm'; effect=True; owner_error=owner_error or (not ok3)
+                      elif login and not account:
+                          # Authentication branch 1: existing Google session if provider exposes it.
+                          google=await first_marker(s,lease,['Continue with Google','Sign in with Google','Log in with Google','Google'])
+                          if google:
+                              ok=await click(s,lease,'text='+google,high=False)
+                              action='google_auth_attempt'; effect=True; owner_error=not ok
+                          else:
+                              # Authentication branch 2: browser-saved/autofilled credentials already in provider form.
+                              ok=await click(s,lease,'button[type=submit]',high=False)
+                              action='saved_credential_submit'; effect=True; owner_error=not ok
+                      elif account:
+                          action='authenticated_inventory_observed'
+
+                      # Reconcile only coarse postcondition; never log lease, URL, DOM, credentials or balance amount.
+                      after_cash=await first_marker(s,lease,spec['cashout'])
+                      after_account=await first_marker(s,lease,spec['account'])
+                      after_login=await first_marker(s,lease,spec['login'])
+                      print(json.dumps({
+                          'provider':spec['id'],
+                          'provider_side_effect':effect,
+                          'action':action,
+                          'owner_error':owner_error,
+                          'cashout_visible_before':bool(cashout),
+                          'account_marker_before':bool(account),
+                          'login_marker_before':bool(login),
+                          'cashout_visible_after':bool(after_cash),
+                          'account_marker_after':bool(after_account),
+                          'login_marker_after':bool(after_login),
+                          'authenticated_after':bool(after_account and not after_login),
+                          'credentials_logged':False,
+                          'navigation_performed':False,
+                          'second_browser_started':False,
+                      },sort_keys=True))
           asyncio.run(main())
           PY
