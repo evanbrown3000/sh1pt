@@ -1,4 +1,4 @@
-name: Cognilode CUX bounded Ticketmaster scan
+name: Cognilode CUX Prime Opinion saved-auth attempt
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  scan:
+  prime:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
@@ -19,121 +19,68 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check 'mcp==1.29.0'
-      - name: Scan exact current Ticketmaster tab without purchase
+      - name: Reuse current Prime Opinion CUX lease and try saved login once
         shell: bash
         run: |
           python - <<'PY'
-          import asyncio, json, re
+          import asyncio,json
           from urllib.parse import urlparse
           from mcp import ClientSession
           from mcp.client.streamable_http import streamable_http_client
 
-          MAX_PER_TICKET=40.0
-          MAX_TOTAL_EXPOSURE=50.0
-          MIN_POST_FEE_ROI=0.30
-          BUYER_FEE_EST=0.10
-          SELLER_FEE_EST=0.15
-
-          def parse_texts(result):
-              out=[]
-              for part in result.content:
-                  t=getattr(part,'text','')
+          def decode(r):
+              for p in r.content:
+                  t=getattr(p,'text','')
                   if not t: continue
-                  try: out.append(json.loads(t))
+                  try:
+                      o=json.loads(t); return o.get('result',o) if isinstance(o,dict) else o
                   except Exception: pass
-              return out
-
-          def walk(obj):
-              if isinstance(obj,dict):
-                  yield obj
-                  for v in obj.values(): yield from walk(v)
-              elif isinstance(obj,list):
-                  for v in obj: yield from walk(v)
-
-          def first_value(obj,key):
-              for row in walk(obj):
-                  v=row.get(key)
-                  if v not in (None,''): return v
-              return None
-
-          async def call(s,op,args=None):
-              r=await s.call_tool('multi_tool',{'operation':op,'arguments':args or {}})
-              if bool(getattr(r,'isError',False)): raise RuntimeError(f'{op} owner error')
-              vals=parse_texts(r)
-              return vals[0].get('result',vals[0]) if vals and isinstance(vals[0],dict) else (vals[0] if vals else {})
+              return {}
+          def walk(o):
+              if isinstance(o,dict):
+                  yield o
+                  for v in o.values(): yield from walk(v)
+              elif isinstance(o,list):
+                  for v in o: yield from walk(v)
+          async def raw(s,op,args=None): return await s.call_tool('multi_tool',{'operation':op,'arguments':args or {}})
+          async def call(s,op,args=None): return decode(await raw(s,op,args))
+          def lease_of(sessions):
+              rows=list(walk(sessions)); live99=any(str(r.get('display') or '')==':99' and (r.get('active') is True or r.get('alive') is True or str(r.get('state') or '').lower() in {'active','live','running'}) for r in rows)
+              if not live99: raise RuntimeError('no live :99 application session')
+              xs=[]
+              for r in rows:
+                  x=str(r.get('lease_id') or '').strip()
+                  if x and x not in xs: xs.append(x)
+              if len(xs)!=1: raise RuntimeError(f'expected one unique application lease, observed {len(xs)}')
+              return xs[0]
+          async def expect(s,lease,text):
+              r=await raw(s,'computerusex.form.expect',{'lease_id':lease,'text':text,'wait_seconds':1.25})
+              return not bool(getattr(r,'isError',False))
 
           async def main():
-              async with streamable_http_client('https://mcp.cognilode.com/mcp') as (read,write,_):
-                  async with ClientSession(read,write) as s:
+              async with streamable_http_client('https://mcp.cognilode.com/mcp') as (rd,wr,_):
+                  async with ClientSession(rd,wr) as s:
                       await s.initialize()
-                      status=await call(s,'computerusex.tools.status',{})
-                      status_strings=[]
-                      for row in walk(status):
-                          for v in row.values():
-                              if isinstance(v,str): status_strings.append(v.casefold())
-                      active_ticket_owner=any(('ticket' in x or 'resale' in x) for x in status_strings)
-
+                      sessions=await call(s,'computerusex.tools.sessions',{}); lease=lease_of(sessions)
                       windows=await call(s,'computerusex.tools.browser_windows',{})
-                      targets=[]
-                      for row in walk(windows):
-                          u=str(row.get('url') or '')
-                          tid=str(row.get('target_id') or '')
-                          title=str(row.get('title') or '')
-                          try: host=(urlparse(u).hostname or '').lower()
-                          except Exception: host=''
-                          if tid and (host=='ticketmaster.com' or host.endswith('.ticketmaster.com')):
-                              targets.append((tid,u,title))
-                      uniq=[]
-                      for x in targets:
-                          if x[0] not in {y[0] for y in uniq}: uniq.append(x)
-                      if len(uniq)!=1:
-                          print(json.dumps({'ticketmaster_target_count':len(uniq),'active_ticket_owner':active_ticket_owner,'purchase_attempted':False,'qualified_purchase':False,'reason':'no_single_exact_ticketmaster_target'},sort_keys=True))
-                          return
-                      tid,url,title=uniq[0]
-                      cap=await call(s,'computerusex.tools.browser_tab_capture',{'target_id':tid,'cdp_endpoint':'','output_dir':None,'run_ocr':False,'run_omniparser':False,'ocr_provider':'auto','lang':'eng'})
-                      shot=str(first_value(cap,'screenshot_path') or '')
-                      if not shot: raise RuntimeError('capture returned no screenshot path')
-                      analyzed=await call(s,'computerusex.tools.image',{'image_path':shot,'output_dir':None,'run_ocr':True,'run_omniparser':False,'ocr_provider':'auto','lang':'eng'})
-                      strings=[]
-                      for row in walk(analyzed):
-                          for v in row.values():
-                              if isinstance(v,str): strings.append(v)
-                      text='\n'.join(strings)
-                      folded=text.casefold()
-                      amounts=[]
-                      for raw in re.findall(r'\$\s*([0-9]+(?:\.[0-9]{1,2})?)',text):
-                          try:
-                              x=float(raw)
-                              if 1<=x<=5000: amounts.append(x)
-                          except ValueError: pass
-                      low=min(amounts) if amounts else None
-                      transfer=bool(re.search(r'transfer|transferable',folded))
-                      resale=bool(re.search(r'verified resale|resale ticket|sell tickets|ticket resale',folded))
-                      face_value_only='face value exchange' in folded
-                      # Same-seat/section cross-market comparator is intentionally required.
-                      # A Ticketmaster screenshot alone cannot prove comparable resale net.
-                      same_inventory_comparator=False
-                      qualified=False
-                      reason='same_inventory_cross_market_comparator_missing'
-                      if low is not None and low>MAX_PER_TICKET: reason='primary_price_above_per_ticket_cap'
-                      elif low is not None and low*(1+BUYER_FEE_EST)>MAX_TOTAL_EXPOSURE: reason='all_in_exposure_above_total_cap'
-                      elif face_value_only: reason='face_value_only_resale'
-                      elif not (transfer or resale): reason='transfer_resale_permission_unproven'
-                      print(json.dumps({
-                          'ticketmaster_target_count':1,
-                          'active_ticket_owner':active_ticket_owner,
-                          'public_page_title':title[:160],
-                          'visible_price_observed':low is not None,
-                          'visible_low_price_le_40':bool(low is not None and low<=MAX_PER_TICKET),
-                          'all_in_exposure_le_50':bool(low is not None and low*(1+BUYER_FEE_EST)<=MAX_TOTAL_EXPOSURE),
-                          'transfer_or_resale_marker_visible':bool(transfer or resale),
-                          'face_value_only_marker_visible':face_value_only,
-                          'same_inventory_comparator_proven':same_inventory_comparator,
-                          'required_post_fee_roi':MIN_POST_FEE_ROI,
-                          'qualified_purchase':qualified,
-                          'purchase_attempted':False,
-                          'reason':reason,
-                          'private_page_content_logged':False,
-                      },sort_keys=True))
+                      prime=False
+                      for r in walk(windows):
+                          u=str(r.get('url') or '')
+                          try: h=(urlparse(u).hostname or '').lower()
+                          except Exception: h=''
+                          if h=='primeopinion.com' or h.endswith('.primeopinion.com'): prime=True
+                      if not prime:
+                          print(json.dumps({'primeopinion_current':False,'login_submit_attempted':False,'reason':'provider_moved_before_effect'},sort_keys=True)); return
+                      login=await expect(s,lease,'Log in')
+                      rewards=await expect(s,lease,'Rewards')
+                      attempted=False; submit_owner_error=False
+                      if login and not rewards:
+                          attempted=True
+                          r=await raw(s,'computerusex.form.click',{'lease_id':lease,'selector':'button[type=submit]','effect_class':'final_submit','allow_submit':True,'allow_high_effect':False})
+                          submit_owner_error=bool(getattr(r,'isError',False))
+                      after_rewards=await expect(s,lease,'Rewards')
+                      after_login=await expect(s,lease,'Log in')
+                      authenticated=bool(after_rewards and not after_login)
+                      print(json.dumps({'primeopinion_current':True,'login_surface_before':login,'rewards_before':rewards,'login_submit_attempted':attempted,'submit_owner_error':submit_owner_error,'authenticated_after_saved_login_attempt':authenticated,'provider_side_auth_attempt':attempted,'credentials_logged':False},sort_keys=True))
           asyncio.run(main())
           PY
