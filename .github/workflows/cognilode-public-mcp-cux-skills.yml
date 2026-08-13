@@ -1,4 +1,4 @@
-name: Cognilode public MCP CUX observation skill probe
+name: Cognilode public MCP CUX observation contract probe
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  skills:
+  contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -19,34 +19,39 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check 'mcp==1.29.0'
-      - name: Read single-call CUX observation and runtime-health schemas
+      - name: Probe CUX observation contract shapes only
         shell: bash
         run: |
           python - <<'PY'
-          import asyncio
+          import asyncio, json
           from mcp import ClientSession
           from mcp.client.streamable_http import streamable_http_client
 
-          OPS = [
-              'computerusex.capture',
-              'computerusex.capture.latest',
-              'computerusex.dom.resolve',
-              'computerusex.tools.runtime_health',
-          ]
+          OPS=['computerusex.capture','computerusex.capture.latest','computerusex.dom.resolve','computerusex.tools.runtime_health']
+
+          def safe_shape(value, depth=0):
+              if depth>3: return type(value).__name__
+              if isinstance(value,dict):
+                  return {str(k):safe_shape(v,depth+1) for k,v in list(value.items())[:40]}
+              if isinstance(value,list):
+                  return {'list_len':len(value),'sample':safe_shape(value[0],depth+1) if value else None}
+              if isinstance(value,str): return {'type':'str','len':len(value)}
+              return {'type':type(value).__name__}
 
           async def main():
-              async with streamable_http_client('https://mcp.cognilode.com/mcp') as (read, write, _):
-                  async with ClientSession(read, write) as session:
-                      await session.initialize()
+              async with streamable_http_client('https://mcp.cognilode.com/mcp') as (read,write,_):
+                  async with ClientSession(read,write) as s:
+                      await s.initialize()
                       for op in OPS:
-                          result = await session.call_tool('multi_tool', {
-                              'operation': '__skill__',
-                              'arguments': {'operation': op},
-                          })
-                          print('\n===SKILL ' + op + '===')
-                          for part in result.content:
-                              text = getattr(part, 'text', '')
-                              if text:
-                                  print(text)
+                          try:
+                              r=await s.call_tool('multi_tool',{'operation':op,'arguments':{}})
+                              texts=[getattr(p,'text','') for p in r.content if getattr(p,'text','')]
+                              parsed=[]
+                              for t in texts:
+                                  try: parsed.append(json.loads(t))
+                                  except Exception: parsed.append({'non_json_len':len(t)})
+                              print(json.dumps({'operation':op,'is_error':bool(getattr(r,'isError',False)),'shape':safe_shape(parsed)},sort_keys=True))
+                          except Exception as exc:
+                              print(json.dumps({'operation':op,'exception_type':type(exc).__name__,'exception_len':len(str(exc))},sort_keys=True))
           asyncio.run(main())
           PY
