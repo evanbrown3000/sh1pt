@@ -1,4 +1,4 @@
-name: Cognilode public MCP read-only probe
+name: Cognilode public MCP cash/wallet catalog probe
 
 on:
   workflow_dispatch:
@@ -20,27 +20,41 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check 'mcp==1.29.0'
-      - name: Read public Cognilode capability catalog only
+      - name: Read only cash/provider/wallet-related public operation names
         shell: bash
         run: |
           python - <<'PY'
-          import asyncio, json
+          import asyncio, json, re
           from mcp import ClientSession
           from mcp.client.streamable_http import streamable_http_client
 
+          PAT=re.compile(r'(business|cash|revenue|wallet|rust|rtc|wr?tc|solana|crypto|token|payout|payment|paypal|venmo|stripe|gumroad|leanpub|ticket|resale|qmee|survey|freecash|prime|attapoll|balance|withdraw)',re.I)
+
+          def walk(value):
+              if isinstance(value,dict):
+                  for k,v in value.items():
+                      yield str(k)
+                      yield from walk(v)
+              elif isinstance(value,list):
+                  for v in value: yield from walk(v)
+              elif isinstance(value,str):
+                  yield value
+
           async def main():
-              async with streamable_http_client('https://mcp.cognilode.com/mcp') as (read, write, _):
-                  async with ClientSession(read, write) as session:
-                      await session.initialize()
-                      tools = await session.list_tools()
-                      print('TOOL_NAMES=' + json.dumps(sorted(t.name for t in tools.tools)))
-                      result = await session.call_tool('multi_tool', {
-                          'operation': 'capabilities.catalog',
-                          'arguments': {},
-                      })
+              async with streamable_http_client('https://mcp.cognilode.com/mcp') as (read,write,_):
+                  async with ClientSession(read,write) as s:
+                      await s.initialize()
+                      result=await s.call_tool('multi_tool',{'operation':'capabilities.catalog','arguments':{}})
+                      matches=set()
                       for part in result.content:
-                          text = getattr(part, 'text', '')
-                          if text:
-                              print('CATALOG=' + text)
+                          text=getattr(part,'text','')
+                          if not text: continue
+                          try: obj=json.loads(text)
+                          except Exception: obj=text
+                          for item in walk(obj):
+                              # Only emit operation-like identifiers, never arbitrary values/content.
+                              if PAT.search(item) and re.fullmatch(r'[A-Za-z0-9_.:-]{3,160}',item):
+                                  matches.add(item)
+                      print(json.dumps({'matching_operation_identifiers':sorted(matches)[:250]},sort_keys=True))
           asyncio.run(main())
           PY
