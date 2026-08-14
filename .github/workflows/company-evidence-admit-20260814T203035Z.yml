@@ -1,0 +1,222 @@
+name: Admit company evidence review 20260814T203035Z
+
+on:
+  push:
+    branches:
+      - evidence-review-admit-20260814T203035Z
+    paths:
+      - .github/workflows/company-evidence-admit-20260814T203035Z.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install existing MCP client
+        run: python -m pip install --disable-pip-version-check "mcp==1.29.0"
+
+      - name: Execute canonical admission on the owner host
+        shell: bash
+        run: |
+          python - <<'PY'
+          import asyncio
+          import json
+          import sys
+
+          from mcp import ClientSession
+          from mcp.client.streamable_http import streamable_http_client
+
+          COMMAND = r'''set -Eeuo pipefail
+          BATCH_ID='20260814T203035Z'
+          BRANCH='evidence-review-admit-20260814T203035Z'
+          PRIVATE_REPO=''
+          RUNROOT=''
+          PUSHWT=''
+
+          cleanup() {
+            set +e
+            if [ -n "${PUSHWT:-}" ] && [ -n "${PRIVATE_REPO:-}" ]; then
+              git -C "$PRIVATE_REPO" worktree remove --force "$PUSHWT" >/dev/null 2>&1 || true
+            fi
+            [ -n "${RUNROOT:-}" ] && rm -rf "$RUNROOT"
+            [ -n "${PUSHWT:-}" ] && rm -rf "$PUSHWT"
+          }
+          trap cleanup EXIT
+
+          for root in /home/evan/Projects /home/evan/.local/share/live /data/libri_artifacts; do
+            [ -e "$root" ] || continue
+            while IFS= read -r marker; do
+              repo="${marker%/.git}"
+              url="$(git -C "$repo" remote get-url origin 2>/dev/null || true)"
+              case "$url" in
+                *evanbrown3000/contracts_commands_and_tools*)
+                  PRIVATE_REPO="$repo"
+                  break 2
+                  ;;
+              esac
+            done < <(find "$root" -maxdepth 12 \( -type d -o -type f \) -name .git -print 2>/dev/null | sort)
+          done
+
+          if [ -z "$PRIVATE_REPO" ]; then
+            echo '{"verified_admitted":false,"error":"private_owner_repo_not_found"}'
+            exit 31
+          fi
+
+          git -C "$PRIVATE_REPO" fetch --prune origin \
+            "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+          git -C "$PRIVATE_REPO" rev-parse --verify "refs/remotes/origin/$BRANCH^{commit}" >/dev/null
+
+          RUNROOT="$(mktemp -d /tmp/company-evidence-review-admit-${BATCH_ID}.XXXXXX)"
+          git -C "$PRIVATE_REPO" archive "refs/remotes/origin/$BRANCH" | tar -x -C "$RUNROOT"
+          cd "$RUNROOT"
+          test -s ".evidence-review/${BATCH_ID}.md"
+          test -s ".evidence-review/admit_owner.py"
+
+          mapfile -t PYTHONS < <(
+            {
+              printf '%s\n' \
+                /home/evan/.local/share/live/static_and_singular/shared_venvs/world-runtime/current/bin/python \
+                /home/evan/.local/share/live/worlds/v1/shared_venvs/world-runtime/current/bin/python
+              command -v python3 2>/dev/null || true
+              find /home/evan/.local/share/live -maxdepth 12 -type f \
+                \( -path '*/bin/python' -o -path '*/bin/python3' \) -perm -u+x -print 2>/dev/null || true
+            } | awk 'NF && !seen[$0]++'
+          )
+
+          RECEIPT=".evidence-review/${BATCH_ID}-admission-receipt.json"
+          SELECTED_PYTHON=''
+          for mode in direct mcp; do
+            for py in "${PYTHONS[@]}"; do
+              [ -x "$py" ] || continue
+              if [ "$mode" = direct ]; then
+                "$py" -c "import top_level_evidence_collection_and_orchestrators_and_cost_and_benefit_accounting_and_attribution.evidence_review" \
+                  >/dev/null 2>&1 || continue
+              else
+                "$py" -c 'import mcp' >/dev/null 2>&1 || continue
+              fi
+              set +e
+              "$py" .evidence-review/admit_owner.py \
+                >"$RUNROOT/admit-client.stdout" 2>"$RUNROOT/admit-client.stderr"
+              rc=$?
+              set -e
+              if [ -s "$RECEIPT" ] && python3 - "$RECEIPT" <<'PYVERIFY'
+          import json, sys
+          value = json.load(open(sys.argv[1], encoding='utf-8'))
+          raise SystemExit(0 if value.get('verified_admitted') is True else 1)
+          PYVERIFY
+              then
+                SELECTED_PYTHON="$py"
+                break 2
+              fi
+              if [ "$rc" -eq 0 ] && [ ! -s "$RECEIPT" ]; then
+                echo '{"verified_admitted":false,"error":"client_returned_zero_without_receipt"}'
+              fi
+            done
+          done
+
+          if [ -z "$SELECTED_PYTHON" ]; then
+            if [ -s "$RECEIPT" ]; then
+              python3 - "$RECEIPT" <<'PYSANITIZEFAIL'
+          import json, sys
+          value = json.load(open(sys.argv[1], encoding='utf-8'))
+          attempts=[]
+          for item in value.get('attempts', []):
+              attempts.append({
+                  'route': item.get('route'),
+                  'endpoint': item.get('endpoint'),
+                  'admitted': item.get('admitted'),
+                  'error': item.get('error'),
+              })
+          print(json.dumps({
+              'batch_id': value.get('batch_id'),
+              'report_sha256': value.get('report_sha256'),
+              'verified_admitted': value.get('verified_admitted'),
+              'attempts': attempts,
+          }, sort_keys=True))
+          PYSANITIZEFAIL
+            else
+              echo '{"verified_admitted":false,"error":"no_compatible_owner_python_or_no_receipt"}'
+            fi
+            exit 32
+          fi
+
+          PUSHWT="$(mktemp -d /tmp/company-evidence-review-receipt-${BATCH_ID}.XXXXXX)"
+          rmdir "$PUSHWT"
+          git -C "$PRIVATE_REPO" worktree add --detach "$PUSHWT" "refs/remotes/origin/$BRANCH"
+          git -C "$PUSHWT" checkout -b "receipt-${BATCH_ID}-$$"
+          mkdir -p "$PUSHWT/.evidence-review"
+          cp "$RECEIPT" "$PUSHWT/.evidence-review/${BATCH_ID}-admission-receipt.json"
+          printf '%s\n' "$SELECTED_PYTHON" > "$PUSHWT/.evidence-review/${BATCH_ID}-admission-python.txt"
+          git -C "$PUSHWT" config user.name 'company-evidence-review-admission'
+          git -C "$PUSHWT" config user.email 'company-evidence-review-admission@users.noreply.github.com'
+          git -C "$PUSHWT" add ".evidence-review/${BATCH_ID}-admission-receipt.json" \
+            ".evidence-review/${BATCH_ID}-admission-python.txt"
+          if ! git -C "$PUSHWT" diff --cached --quiet; then
+            git -C "$PUSHWT" commit -m "Record owner-native evidence admission receipt ${BATCH_ID}"
+            git -C "$PUSHWT" push origin "HEAD:refs/heads/$BRANCH"
+          fi
+
+          python3 - "$RECEIPT" "$SELECTED_PYTHON" <<'PYSANITIZE'
+          import json, sys
+          value = json.load(open(sys.argv[1], encoding='utf-8'))
+          print(json.dumps({
+              'batch_id': value.get('batch_id'),
+              'worker_conversation_url': value.get('worker_conversation_url'),
+              'report_sha256': value.get('report_sha256'),
+              'verified_admitted': value.get('verified_admitted'),
+              'successful_route': value.get('successful_route'),
+              'selected_python': sys.argv[2],
+          }, sort_keys=True))
+          PYSANITIZE
+          '''
+
+          async def main() -> None:
+              bad = False
+              return_code = None
+              async with streamable_http_client("https://mcp.cognilode.com/mcp") as streams:
+                  read_stream, write_stream = streams[0], streams[1]
+                  async with ClientSession(read_stream, write_stream) as session:
+                      await session.initialize()
+                      result = await session.call_tool(
+                          "host_shell_execute",
+                          {
+                              "command": COMMAND,
+                              "idempotency_key": "company-evidence-review-admit-20260814T203035Z-v1",
+                              "timeout_seconds": 720,
+                          },
+                      )
+                      if getattr(result, "isError", False):
+                          bad = True
+                      for part in result.content:
+                          text = getattr(part, "text", "")
+                          if not text:
+                              continue
+                          try:
+                              payload = json.loads(text)
+                          except Exception:
+                              print(text)
+                              continue
+                          stdout = payload.get("stdout")
+                          stderr = payload.get("stderr")
+                          if stdout:
+                              print(stdout)
+                          if stderr:
+                              print(stderr, file=sys.stderr)
+                          if "returncode" in payload:
+                              return_code = int(payload.get("returncode") or 0)
+                              if return_code != 0:
+                                  bad = True
+              if bad or return_code not in (None, 0):
+                  raise SystemExit(return_code or 1)
+
+          asyncio.run(main())
+          PY
