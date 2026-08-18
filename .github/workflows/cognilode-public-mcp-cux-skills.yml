@@ -18,13 +18,13 @@ permissions:
 jobs:
   contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 7
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check 'mcp==1.29.0'
-      - name: Execute focused selected/source/loaded preflight through the existing public MCP owner
+      - name: Execute existing selected-world adoption and loaded-generation verification
         shell: bash
         run: |
           python - <<'PY'
@@ -33,13 +33,13 @@ jobs:
           from mcp.client.streamable_http import streamable_http_client
 
           command = '''set -Eeuo pipefail
-          work=$(mktemp -d /tmp/loaded-adoption-preflight.XXXXXX)
+          work=$(mktemp -d /tmp/selected-world-adoption.XXXXXX)
           trap 'rm -rf "$work"' EXIT
-          curl -fsSL --retry 2 --connect-timeout 10 https://raw.githubusercontent.com/evanbrown3000/sh1pt/629f2117befeb0e737a30dd874ee50c194730fe5/.github/recovery/loaded_adoption_preflight.py -o "$work/preflight.py"
-          chmod 700 "$work/preflight.py"
+          curl -fsSL --retry 2 --connect-timeout 10 https://raw.githubusercontent.com/evanbrown3000/sh1pt/1244ae36c7acb8ac372cab531e46d7683047d381/.github/recovery/loaded_adoption_preflight.py -o "$work/adopt.py"
+          chmod 700 "$work/adopt.py"
           py=/home/evan/.local/share/live/worlds/v1/runtime/venv/bin/python
           test -x "$py"
-          "$py" "$work/preflight.py"
+          "$py" "$work/adopt.py"
           '''
 
           async def main():
@@ -62,7 +62,7 @@ jobs:
                           'arguments': {
                               'command': command,
                               'cwd': '/home/evan',
-                              'timeout_seconds': 80,
+                              'timeout_seconds': 180,
                               'max_output_bytes': 262144,
                               'host_user': 'evan',
                           },
