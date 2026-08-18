@@ -6,6 +6,7 @@ on:
     branches: [master]
     paths:
       - '.github/workflows/cognilode-public-mcp-cux-skills.yml'
+      - '.github/recovery/loaded_adoption_preflight.py'
   pull_request:
     branches: [master]
     paths:
@@ -19,183 +20,66 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check 'mcp==1.29.0'
-      - name: Read fresh selected-world and existing-consumer evidence through the existing public MCP owner
+      - name: Execute concise fresh selected-world preflight through the existing public MCP owner
         shell: bash
         run: |
           python - <<'PY'
-          import asyncio, json, traceback
+          import asyncio, base64, pathlib, traceback
           from mcp import ClientSession
           from mcp.client.streamable_http import streamable_http_client
 
-          command = r'''set -Eeuo pipefail
-          export HOME=/home/evan
-          PY=/home/evan/.local/share/live/worlds/v1/runtime/venv/bin/python
-          test -x "$PY"
-          "$PY" - <<'PYH'
-          from __future__ import annotations
-          import hashlib, importlib, importlib.metadata, json, os, pathlib, re, subprocess, sys, time, urllib.request
-
-          CORR_REPAIR='human-cascade-live-20260817T2058CT-7B3F91D2'
-          CORR_REVENUE='everything-revenue-front-1dade875-d140-4eb7-92b2-0e3651e694be'
-          result={'schema':'everything.prekickoff.loaded_adoption_preflight.v1','observed_at_s':time.time(),'repair_correlation':CORR_REPAIR,'revenue_correlation':CORR_REVENUE}
-
-          def run(argv, timeout=12):
-              try:
-                  p=subprocess.run(argv,text=True,capture_output=True,timeout=timeout,check=False)
-                  return {'returncode':p.returncode,'stdout':p.stdout[-16000:],'stderr':p.stderr[-4000:]}
-              except Exception as exc:
-                  return {'exception':f'{type(exc).__name__}: {exc}'}
-
-          def sha(path):
-              try:
-                  p=pathlib.Path(path); return hashlib.sha256(p.read_bytes()).hexdigest()
-              except Exception: return ''
-
-          result['host']={
-              'loadavg':pathlib.Path('/proc/loadavg').read_text().strip(),
-              'meminfo':{line.split(':',1)[0]:line.split(':',1)[1].strip() for line in pathlib.Path('/proc/meminfo').read_text().splitlines() if line.split(':',1)[0] in {'MemTotal','MemAvailable','SwapTotal','SwapFree'}},
-              'psi':{name:pathlib.Path('/proc/pressure',name).read_text().strip() for name in ('cpu','memory','io') if pathlib.Path('/proc/pressure',name).exists()},
-              'top_cpu':run(['ps','-eo','pid,ppid,%cpu,%mem,rss,etimes,comm,args','--sort=-%cpu'])['stdout'].splitlines()[:18],
-              'top_rss':run(['ps','-eo','pid,ppid,%cpu,%mem,rss,etimes,comm,args','--sort=-rss'])['stdout'].splitlines()[:18],
-          }
-          result['services']={
-              'user_daemon_manager_active':run(['systemctl','--user','is-active','daemon_manager.service']),
-              'user_daemon_manager_status':run(['systemctl','--user','status','daemon_manager.service','--no-pager','--lines=25']),
-              'system_daemon_manager_active':run(['systemctl','is-active','daemon_manager.service']),
-              'supervisor_status':run(['/home/evan/.local/share/live/worlds/v1/runtime/venv/bin/supervisorctl','-c','/home/evan/.local/share/live/daemon_manager/supervisor/supervisord.conf','status']),
-              'owner_processes':run(['bash','-lc',"ps -eo pid,ppid,etimes,%cpu,%mem,args | grep -E 'daemon_manager|selected.*world|world.*adopt|runtime_reconciler|employee_runtime|ecr_email|human_operator_panel|computerusex' | grep -v grep | head -120"]),
-          }
-
-          module_names=('ecr_email','employee_runtime','human_operator_panel','daemon_manager')
-          modules={}
-          for name in module_names:
-              row={}
-              try:
-                  mod=importlib.import_module(name)
-                  path=str(pathlib.Path(mod.__file__).resolve())
-                  row.update(import_ok=True,file=path,sha256=sha(path))
-                  for dist in (name,name.replace('_','-')):
-                      try:
-                          row['version']=importlib.metadata.version(dist); break
-                      except Exception: pass
-              except Exception as exc:
-                  row.update(import_ok=False,error=f'{type(exc).__name__}: {exc}')
-              modules[name]=row
-          result['loaded_modules']=modules
-          result['runtime']={
-              'python':sys.executable,
-              'venv_realpath':str(pathlib.Path('/home/evan/.local/share/live/worlds/v1/runtime/venv').resolve()),
-              'sys_path':sys.path[:16],
-          }
-
-          repos=(
-              '/home/evan/Projects/static_and_singular/internal_sub_projects/ecr_email',
-              '/home/evan/Projects/worlds/v1/cognilode/internal_sub_projects/autonomy_core/internal_sub_projects/employee',
-              '/home/evan/Projects/static_and_singular/internal_sub_projects/human_operator_panel',
-              '/home/evan/Projects/static_and_singular/internal_sub_projects/daemon_manager',
-              '/home/evan/Projects/everything',
-              '/home/evan/Projects/static_and_singular',
-          )
-          repo_rows={}
-          for repo in repos:
-              p=pathlib.Path(repo)
-              if not p.exists():
-                  repo_rows[repo]={'exists':False}; continue
-              repo_rows[repo]={
-                  'exists':True,
-                  'head':run(['git','-C',repo,'rev-parse','HEAD'])['stdout'].strip(),
-                  'branch':run(['git','-C',repo,'branch','--show-current'])['stdout'].strip(),
-                  'status':run(['git','-C',repo,'status','--short'])['stdout'].splitlines()[:40],
-              }
-          result['source_repos']=repo_rows
-          result['adoption_surface_search']=run(['bash','-lc',"grep -RIl -E 'selected.?world.*adopt|adopt.*selected.?world|selected_runtime.*reconcil' /home/evan/Projects/static_and_singular/internal_sub_projects/daemon_manager /home/evan/Projects/static_and_singular/internal_sub_projects/shared_venv_manager /home/evan/Projects/worlds/v1/cognilode/internal_sub_projects/autonomy_core/internal_sub_projects/employee 2>/dev/null | head -80"],timeout=15)
-
-          try:
-              with urllib.request.urlopen('http://127.0.0.1:9331/json/list',timeout=3) as response:
-                  pages=json.load(response)
-              result['cdp']={'responsive':True,'page_count':sum(1 for x in pages if x.get('type')=='page'),'conversation_page_count':sum(1 for x in pages if x.get('type')=='page' and '/c/' in str(x.get('url') or ''))}
-          except Exception as exc:
-              result['cdp']={'responsive':False,'error':f'{type(exc).__name__}: {exc}'}
-          try:
-              with urllib.request.urlopen('http://127.0.0.1:8765/evidence-neighborhood',timeout=4) as response:
-                  body=response.read()
-              text=body.decode('utf-8','replace')
-              surface=re.search(r'EVIDENCE_NEIGHBORHOOD_CAUSAL_V3',text)
-              snaps=re.findall(r'[0-9a-f]{20}',text)
-              result['hop']={'http_ok':True,'bytes':len(body),'sha256':hashlib.sha256(body).hexdigest(),'surface_v3_present':bool(surface),'candidate_snapshot_ids':snaps[:6]}
-          except Exception as exc:
-              result['hop']={'http_ok':False,'error':f'{type(exc).__name__}: {exc}'}
-
-          for path in (
-              '/home/evan/Projects/static_and_singular/internal_sub_projects/ecr_email/src',
-              '/home/evan/Projects/worlds/v1/cognilode/internal_sub_projects/autonomy_core/internal_sub_projects/employee/src',
-              '/home/evan/Projects/static_and_singular/internal_sub_projects/contracts_commands_and_tools/src',
-              '/home/evan/Projects/static_and_singular/internal_sub_projects/secretary/src',
-              '/home/evan/Projects/static_and_singular/internal_sub_projects/persona_sot/src',
-              '/home/evan/Projects/static_and_singular/src',
-          ):
-              if path not in sys.path: sys.path.insert(0,path)
-          try:
-              from ecr_email.daemon import _domain_root
-              from ecr_email.poll import poll_all_once
-              from ecr_email.material_delegation import stage_and_delegate
-              root=_domain_root()
-              polled=poll_all_once(root=root,persist=True,limit=100)
-              material=dict(polled.get('material_watch') or {})
-              emitted=[dict(x) for x in material.get('emitted') or () if isinstance(x,dict)]
-              delegated=stage_and_delegate(emitted,root=root)
-              blob=json.dumps(emitted,sort_keys=True,default=str)
-              correlations=[c for c in (CORR_REPAIR,CORR_REVENUE) if c in blob]
-              result['loaded_ecr_black_box']={
-                  'new_count':polled.get('new_count'),
-                  'inbox_new_count':(polled.get('inbox') or {}).get('new_count'),
-                  'sent_new_count':(polled.get('sent') or {}).get('new_count'),
-                  'material_emitted_count':len(emitted),
-                  'matched_current_correlations':correlations,
-                  'delegation_status':delegated.get('status'),
-                  'delegation_state':delegated.get('state'),
-                  'delegated_count':delegated.get('delegated_count'),
-                  'pending_count':delegated.get('pending_count'),
-              }
-          except Exception as exc:
-              result['loaded_ecr_black_box']={'error':f'{type(exc).__name__}: {exc}'}
-
-          def activation(persona):
-              p=pathlib.Path('/home/evan/.local/share/live/worlds/v1/cognilode/universe/employee_runtime/activation_requests')/f'employee_{persona}.json'
-              try:
-                  x=json.loads(p.read_text()) if p.exists() else {}
-              except Exception as exc: return {'error':f'{type(exc).__name__}: {exc}'}
-              return {k:x.get(k) for k in ('request_id','correlation_id','semantic_sender','source_created_at_s','state','attempts','submission_observed','response_started','transport_status','transport_attempt_state','last_error','next_attempt_at_s')}
-          result['activations']={p:activation(p) for p in ('everything','static_and_singular','cognilode','business')}
-          print(json.dumps(result,sort_keys=True,default=str))
-          PYH
+          source = pathlib.Path('.github/recovery/loaded_adoption_preflight.py').read_bytes()
+          encoded = base64.b64encode(source).decode('ascii')
+          command = f'''set -Eeuo pipefail
+          work=$(mktemp -d /tmp/loaded-adoption-preflight.XXXXXX)
+          trap 'rm -rf "$work"' EXIT
+          printf %s {encoded!r} | base64 -d > "$work/preflight.py"
+          chmod 700 "$work/preflight.py"
+          py=/home/evan/.local/share/live/worlds/v1/runtime/venv/bin/python
+          test -x "$py"
+          "$py" "$work/preflight.py"
           '''
 
           async def main():
-              async with streamable_http_client('https://mcp.cognilode.com/mcp') as (read,write,_):
-                  async with ClientSession(read,write) as session:
+              async with streamable_http_client('https://mcp.cognilode.com/mcp') as (read, write, _):
+                  async with ClientSession(read, write) as session:
                       await session.initialize()
-                      tools=await session.list_tools()
-                      names={tool.name for tool in tools.tools}
+                      tools = await session.list_tools()
+                      names = {tool.name for tool in tools.tools}
                       if 'multi_tool' not in names:
                           raise RuntimeError(f'multi_tool missing; tools={sorted(names)}')
                       try:
-                          await session.call_tool('multi_tool',{'operation':'__skill__','arguments':{'operation':'host.shell.execute'}})
+                          await session.call_tool('multi_tool', {
+                              'operation': '__skill__',
+                              'arguments': {'operation': 'host.shell.execute'},
+                          })
                       except Exception:
                           pass
-                      result=await session.call_tool('multi_tool',{
-                          'operation':'host.shell.execute',
-                          'arguments':{'command':command,'cwd':'/home/evan','timeout_seconds':80,'max_output_bytes':262144,'host_user':'evan'},
+                      result = await session.call_tool('multi_tool', {
+                          'operation': 'host.shell.execute',
+                          'arguments': {
+                              'command': command,
+                              'cwd': '/home/evan',
+                              'timeout_seconds': 80,
+                              'max_output_bytes': 262144,
+                              'host_user': 'evan',
+                          },
                       })
-                      failed=bool(getattr(result,'isError',False))
+                      failed = bool(getattr(result, 'isError', False))
                       for part in result.content:
-                          text=getattr(part,'text','')
-                          if text: print(text)
-                      if failed: raise RuntimeError('host tool returned isError=true')
+                          text = getattr(part, 'text', '')
+                          if text:
+                              print(text)
+                      if failed:
+                          raise RuntimeError('host tool returned isError=true')
+
           try:
               asyncio.run(main())
           except BaseException:
