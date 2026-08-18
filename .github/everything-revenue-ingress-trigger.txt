@@ -1,4 +1,4 @@
-machine-owned Everything prekickoff loaded-adoption preflight 2026-08-18T03:12Z
+machine-owned Everything prekickoff loaded-adoption preflight 2026-08-18T03:15Z
 repair_id=PREKICKOFF-LOADED-ADOPTION-20260817T2127CT-4F31A9E2
 correlation_id=human-cascade-live-20260817T2058CT-7B3F91D2
 existing_successor=final-kickoff-manager-recurrence-v2-79363122-7c74-422f-9837-af3cb18b48a3
@@ -6,4 +6,4 @@ revenue_correlation=everything-revenue-front-1dade875-d140-4eb7-92b2-0e3651e694b
 existing_public_mcp_ingress=true
 new_control_plane=false
 fresh_source_selected_loaded_observed_evidence_required=true
-retry_reason=concise_log_retrieval
+retry_reason=short_raw_github_host_command
