@@ -1,42 +1,38 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import json, pathlib, subprocess, time
-
-def run(argv, timeout=12):
-    try:
-        p=subprocess.run(argv,text=True,capture_output=True,timeout=timeout,check=False)
-        return {'rc':p.returncode,'out':p.stdout.strip()[-3000:],'err':p.stderr.strip()[-800:]}
-    except Exception as e: return {'error':f'{type(e).__name__}: {e}'}
+import json, pathlib, subprocess, sys, time
 
 def emit(name,value): print(name+'='+json.dumps(value,sort_keys=True,default=str),flush=True)
 
-repos=(
-'/home/evan/Projects/static_and_singular',
-'/home/evan/Projects/static_and_singular/internal_sub_projects/daemon_manager',
-'/home/evan/Projects/static_and_singular/internal_sub_projects/ecr_email',
-'/home/evan/Projects/worlds/v1/cognilode/internal_sub_projects/autonomy_core/internal_sub_projects/employee',
-'/home/evan/Projects/static_and_singular/internal_sub_projects/human_operator_panel',
-'/home/evan/Projects/static_and_singular/internal_sub_projects/shared_venv_manager',
-'/home/evan/Projects/static_and_singular/internal_sub_projects/project_initializer',
-)
-rows={}
-for r in repos:
-    p=pathlib.Path(r); rows[r]={'exists':p.exists()}
-    if not p.exists(): continue
-    rows[r].update(head=run(['git','-C',r,'rev-parse','HEAD'])['out'],branch=run(['git','-C',r,'branch','--show-current'])['out'],origin_main=run(['git','-C',r,'rev-parse','origin/main'])['out'],dirty_count=len(run(['git','-C',r,'status','--porcelain'])['out'].splitlines()))
-emit('REPOS',rows)
+def compact(x):
+    if not isinstance(x,dict): return {'raw_type':type(x).__name__}
+    runtime=x.get('runtime_sync') if isinstance(x.get('runtime_sync'),dict) else {}
+    reload=x.get('manager_reload') if isinstance(x.get('manager_reload'),dict) else {}
+    resource=x.get('resource_preflight') if isinstance(x.get('resource_preflight'),dict) else {}
+    return {'status':x.get('status'),'state':x.get('state'),'world_id':x.get('world_id'),'selected_fingerprint':x.get('selected_fingerprint'),'selected_commits':x.get('selected_commits'),'manager_reload_required':x.get('manager_reload_required'),'manager_restart_requested':x.get('manager_restart_requested'),'manager_reload':{k:reload.get(k) for k in ('status','unit','scope','requested_at_s','verified_at_s','main_pid_before','main_pid_after','exec_main_start_monotonic_before','exec_main_start_monotonic_after','returncode','error')},'loaded_generation':x.get('loaded_generation'),'runtime_sync':{k:runtime.get(k) for k in ('status','world_id','selected_fingerprint','all_canonical_root_consumers_pass','all_owner_python_projects_editable','owner_project_count','editable_project_count','reconciled_at_s')},'resource_preflight':{k:resource.get(k) for k in ('status','admitted','reasons')}}
 
-svc=run(['systemctl','--user','show','daemon_manager.service','--property=ActiveState','--property=SubState','--property=MainPID','--property=ExecMainStartTimestampMonotonic'])
-sup=run(['/home/evan/.local/share/live/worlds/v1/runtime/venv/bin/supervisorctl','-c','/home/evan/.local/share/live/daemon_manager/supervisor/supervisord.conf','status'])
-emit('SERVICE',{'daemon_manager':svc,'supervisor':sup,'observed_at_s':time.time()})
-
-found=[]
+roots=[]
 for base in ('/home/evan/.local/share/live/daemon_manager','/home/evan/.local/share/live/worlds/v1'):
     for p in pathlib.Path(base).rglob('selected_world_adoption.json'):
-        try:
-            x=json.loads(p.read_text()); found.append({'path':str(p),'mtime_ns':p.stat().st_mtime_ns,'status':x.get('status'),'state':x.get('state'),'world_id':x.get('world_id'),'selected_fingerprint':x.get('selected_fingerprint'),'selected_commits':x.get('selected_commits'),'manager_reload_required':x.get('manager_reload_required'),'manager_restart_requested':x.get('manager_restart_requested'),'manager_reload':x.get('manager_reload'),'loaded_generation':x.get('loaded_generation'),'runtime_sync':x.get('runtime_sync')})
-        except Exception as e: found.append({'path':str(p),'error':f'{type(e).__name__}: {e}'})
-emit('ADOPTION',sorted(found,key=lambda x:x.get('mtime_ns',0),reverse=True)[:3])
+        roots.append(p)
+roots=sorted(roots,key=lambda p:p.stat().st_mtime_ns,reverse=True)
+state_root=roots[0].parent if roots else pathlib.Path('/home/evan/.local/share/live/daemon_manager/supervisor')
+before={}
+if roots:
+    try: before=json.loads(roots[0].read_text())
+    except Exception as e: before={'read_error':f'{type(e).__name__}: {e}'}
+emit('ADOPTION_TARGET',{'state_root':str(state_root),'receipt_paths':[str(p) for p in roots[:4]],'before':compact(before)})
 
-loc=run(['bash','-lc',"find /home/evan/Projects /home/evan/.local/share/live/worlds/v1 -maxdepth 5 -type d -name everything -print 2>/dev/null | head -20"])
-emit('EVERYTHING_LOCATIONS',loc)
+from daemon_manager.selected_world_adoption import poll_once
+first=poll_once(state_root=state_root,world_id='v1',force=True,request_manager_restart=True)
+emit('ADOPTION_FORCE',compact(dict(first)))
+
+# Let systemd complete the same-service restart, then use a fresh interpreter so
+# loaded-generation evidence cannot be inherited from this process.
+time.sleep(14)
+code=f'''import json\nfrom daemon_manager.selected_world_adoption import poll_once\nx=poll_once(state_root={str(state_root)!r},world_id="v1",force=False,request_manager_restart=True)\nprint(json.dumps(x,sort_keys=True,default=str))'''
+proc=subprocess.run([sys.executable,'-c',code],text=True,capture_output=True,timeout=120,check=False)
+verify={}
+try: verify=json.loads(proc.stdout.strip().splitlines()[-1]) if proc.stdout.strip() else {}
+except Exception as e: verify={'parse_error':f'{type(e).__name__}: {e}','stdout':proc.stdout[-4000:]}
+emit('ADOPTION_VERIFY',{'process_returncode':proc.returncode,'stderr':proc.stderr[-2000:],'result':compact(verify)})
