@@ -1,7 +1,7 @@
-machine-owned Everything adoption restart evidence 2026-08-18T03:31Z
+machine-owned Everything Daemon Manager restart 2026-08-18T03:34Z
 repair_id=PREKICKOFF-LOADED-ADOPTION-20260817T2127CT-4F31A9E2
 correlation_id=human-cascade-live-20260817T2058CT-7B3F91D2
 existing_successor=final-kickoff-manager-recurrence-v2-79363122-7c74-422f-9837-af3cb18b48a3
 existing_public_mcp_ingress=true
 new_control_plane=false
-focus=exact_adoption_restart_failure_and_service_state
+action=owner_native_daemon_manager_restart
