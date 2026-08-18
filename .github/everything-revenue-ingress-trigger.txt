@@ -1,0 +1,8 @@
+coordination-only freeze 2026-08-18T03:53Z
+coordination_id=TEAM-COORD-20260817T2220CT-V1
+direct_human_current=true
+existing_ecr_employee_cux_only=true
+new_control_plane=false
+mutations_frozen_until_unanimous_consensus_lock=true
+action=focused_live_participant_census_and_ecr_admission
+routing_addendum_gmail_id=1a012fd078cb33da
