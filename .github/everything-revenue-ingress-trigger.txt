@@ -1,7 +1,8 @@
-machine-owned Everything Daemon Manager lifecycle read 2026-08-18T03:40Z
+machine-owned Everything revenue provider probe 2026-08-18T03:44Z
 repair_id=PREKICKOFF-LOADED-ADOPTION-20260817T2127CT-4F31A9E2
 correlation_id=human-cascade-live-20260817T2058CT-7B3F91D2
+revenue_correlation=everything-revenue-front-1dade875-d140-4eb7-92b2-0e3651e694be
 existing_successor=final-kickoff-manager-recurrence-v2-79363122-7c74-422f-9837-af3cb18b48a3
 existing_public_mcp_ingress=true
 new_control_plane=false
-action=read_existing_service_restart_owner
+action=ecr_poll_employee_admit_provider_verify
