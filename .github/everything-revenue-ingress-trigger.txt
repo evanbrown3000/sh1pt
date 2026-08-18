@@ -1,7 +1,8 @@
-machine-owned Everything Daemon Manager restart 2026-08-18T03:34Z
+machine-owned Everything direct existing-service restart 2026-08-18T03:37Z
 repair_id=PREKICKOFF-LOADED-ADOPTION-20260817T2127CT-4F31A9E2
 correlation_id=human-cascade-live-20260817T2058CT-7B3F91D2
 existing_successor=final-kickoff-manager-recurrence-v2-79363122-7c74-422f-9837-af3cb18b48a3
 existing_public_mcp_ingress=true
 new_control_plane=false
-action=owner_native_daemon_manager_restart
+action=systemctl_user_restart_existing_daemon_manager_service
+expected_old_main_pid=1921
