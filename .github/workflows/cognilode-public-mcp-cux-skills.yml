@@ -17,13 +17,13 @@ permissions:
 jobs:
   contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 7
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check 'mcp==1.29.0'
-      - name: Read exact existing Daemon Manager lifecycle ownership
+      - name: Poll ECR, admit Cognilode revenue work, and verify the exact provider edge
         shell: bash
         run: |
           python - <<'PY'
@@ -31,15 +31,11 @@ jobs:
           from mcp import ClientSession
           from mcp.client.streamable_http import streamable_http_client
           command='''set -Eeuo pipefail
-          echo UNIT_CAT_BEGIN
-          systemctl --user cat daemon_manager.service
-          echo UNIT_CAT_END
-          echo UNIT_SHOW_BEGIN
-          systemctl --user show daemon_manager.service --property=ActiveState --property=SubState --property=MainPID --property=ExecMainStartTimestampMonotonic --property=Restart --property=RestartUSec --property=RefuseManualStart --property=RefuseManualStop --property=PartOf --property=BindsTo --property=BoundBy --property=RequiredBy --property=WantedBy --property=TriggeredBy --property=Triggers --property=ConsistsOf
-          echo UNIT_SHOW_END
-          echo DEPENDENCIES_BEGIN
-          systemctl --user list-dependencies --all daemon_manager.service
-          echo DEPENDENCIES_END
+          work=$(mktemp -d /tmp/everything-revenue-probe.XXXXXX)
+          trap 'rm -rf "$work"' EXIT
+          curl -fsSL --retry 2 --connect-timeout 10 https://raw.githubusercontent.com/evanbrown3000/sh1pt/80c3619276fb2b6a7938c86b3c04dd93015b32ea/.github/recovery/everything_revenue_activation_probe.py -o "$work/probe.py"
+          chmod 700 "$work/probe.py"
+          /home/evan/.local/share/live/worlds/v1/runtime/venv/bin/python "$work/probe.py"
           '''
           async def main():
               async with streamable_http_client('https://mcp.cognilode.com/mcp') as (read,write,_):
@@ -48,11 +44,11 @@ jobs:
                       if 'multi_tool' not in names: raise RuntimeError(f'multi_tool missing; tools={sorted(names)}')
                       try: await session.call_tool('multi_tool',{'operation':'__skill__','arguments':{'operation':'host.shell.execute'}})
                       except Exception: pass
-                      result=await session.call_tool('multi_tool',{'operation':'host.shell.execute','arguments':{'command':command,'cwd':'/home/evan','timeout_seconds':45,'max_output_bytes':131072,'host_user':'evan'}})
+                      result=await session.call_tool('multi_tool',{'operation':'host.shell.execute','arguments':{'command':command,'cwd':'/home/evan','timeout_seconds':175,'max_output_bytes':262144,'host_user':'evan'}})
                       for part in result.content:
                           text=getattr(part,'text','')
                           if text: print(text)
-                      if bool(getattr(result,'isError',False)): raise RuntimeError('lifecycle read returned isError=true')
+                      if bool(getattr(result,'isError',False)): raise RuntimeError('provider probe returned isError=true')
           try: asyncio.run(main())
           except BaseException: traceback.print_exc(); raise
           PY
