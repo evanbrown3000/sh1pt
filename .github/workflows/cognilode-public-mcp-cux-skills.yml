@@ -33,7 +33,7 @@ jobs:
           command='''set -Eeuo pipefail
           work=$(mktemp -d /tmp/team-coordination.XXXXXX)
           trap 'rm -rf "$work"' EXIT
-          curl -fsSL --retry 2 --connect-timeout 10 https://raw.githubusercontent.com/evanbrown3000/sh1pt/d86cb214475206c8365e199be8a6ec113ab54c1a/.github/recovery/team_coordination_probe.py -o "$work/coord.py"
+          curl -fsSL --retry 2 --connect-timeout 10 https://raw.githubusercontent.com/evanbrown3000/sh1pt/3504ba552bebcf28206384d7de16a9807dcecb86/.github/recovery/team_coordination_probe.py -o "$work/coord.py"
           chmod 700 "$work/coord.py"
           /home/evan/.local/share/live/worlds/v1/runtime/venv/bin/python "$work/coord.py"
           '''
