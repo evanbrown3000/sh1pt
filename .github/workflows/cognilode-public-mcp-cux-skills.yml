@@ -24,7 +24,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check 'mcp==1.29.0'
-      - name: Execute concise fresh selected-world preflight through the existing public MCP owner
+      - name: Execute focused selected/source/loaded preflight through the existing public MCP owner
         shell: bash
         run: |
           python - <<'PY'
@@ -35,7 +35,7 @@ jobs:
           command = '''set -Eeuo pipefail
           work=$(mktemp -d /tmp/loaded-adoption-preflight.XXXXXX)
           trap 'rm -rf "$work"' EXIT
-          curl -fsSL --retry 2 --connect-timeout 10 https://raw.githubusercontent.com/evanbrown3000/sh1pt/master/.github/recovery/loaded_adoption_preflight.py -o "$work/preflight.py"
+          curl -fsSL --retry 2 --connect-timeout 10 https://raw.githubusercontent.com/evanbrown3000/sh1pt/629f2117befeb0e737a30dd874ee50c194730fe5/.github/recovery/loaded_adoption_preflight.py -o "$work/preflight.py"
           chmod 700 "$work/preflight.py"
           py=/home/evan/.local/share/live/worlds/v1/runtime/venv/bin/python
           test -x "$py"
