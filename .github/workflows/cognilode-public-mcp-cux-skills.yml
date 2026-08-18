@@ -116,7 +116,7 @@ jobs:
                       if page.get('type')!='page' or not page.get('webSocketDebuggerUrl'): continue
                       try:
                           ws=websocket.create_connection(page['webSocketDebuggerUrl'],timeout=3,suppress_origin=True)
-                          expr=r'''JSON.stringify({m:Array.from(document.querySelectorAll('[data-message-author-role]')).map((e,i)=>({i,r:e.getAttribute('data-message-author-role'),t:(e.innerText||'').trim()})).filter(x=>x.t),g:!!document.querySelector('button[data-testid="stop-button"],button[aria-label*="Stop" i]'),rl:/too many requests|temporarily limited access|requests are being made too quickly/i.test(document.body.innerText||'')})'''
+                          expr="""JSON.stringify({m:Array.from(document.querySelectorAll('[data-message-author-role]')).map((e,i)=>({i,r:e.getAttribute('data-message-author-role'),t:(e.innerText||'').trim()})).filter(x=>x.t),g:!!document.querySelector('button[data-testid=\"stop-button\"],button[aria-label*=\"Stop\" i]'),rl:/too many requests|temporarily limited access|requests are being made too quickly/i.test(document.body.innerText||'')})"""
                           ws.send(json.dumps({'id':1,'method':'Runtime.evaluate','params':{'expression':expr,'returnByValue':True}}))
                           raw=None
                           for _ in range(20):
